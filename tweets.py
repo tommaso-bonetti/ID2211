@@ -15,7 +15,7 @@ def parse_timestamp(column: list[str]) -> list[int]:
 		res.append(int(temp.timestamp()))
 	return res
 
-def safe_cast(column: list[str], datatype: type) -> list:
+def safe_cast(column: list[str], datatype: type) -> list[str]:
 	res = [str(datatype(cell)) if cell.isnumeric() else '' for cell in column]
 	return res
 
@@ -25,6 +25,23 @@ def extract_numeric(column: list[str], datatype: type) -> list:
 
 	res = [datatype(float(get_num(cell))) for cell in column]
 	return res
+
+def summarize_label(labels: list[str]):
+	unique_labels = set(labels)
+	if len(unique_labels) == 1:
+		return labels[0]
+
+	if 'N' in unique_labels:
+		return summarize_label(list(unique_labels - {'N'}))
+	if 'Q' in unique_labels:
+		return summarize_label(list(unique_labels - {'Q'}))
+
+	if all([label[0] == 'R' for label in unique_labels]):
+		return 'RT'
+	if all([label[0] == 'A' for label in unique_labels]):
+		return 'AT'
+
+	return 'U'
 
 def plot_components(network):
 	connected_components = network.GetWccSzCnt()
@@ -134,8 +151,33 @@ def draw_network(
 	)
 	plt.show()
 
+def draw_user_network(network: nx.DiGraph):
+	labels = nx.get_node_attributes(network, 'label')
+	color_map = {
+		'RT': 'crimson',
+		'RR': 'tomato',
+		'AT': 'forestgreen',
+		'AR': 'yellowgreen',
+		'Q': 'gold',
+		'N': 'lightgrey',
+		'U': 'cornflowerblue'
+	}
+	colors = [color_map[l] for l in labels.values()]
+
+	nx.draw_networkx(
+				network,
+				nx.spring_layout(network),
+				with_labels=False,
+				node_size=20,
+				node_color=colors,
+				width=.25,
+				style=':',
+				alpha=.75
+	)
+	plt.show()
+
 def main():
-	rumor_number = '4'
+	rumor_number = 1
 
 	path_input = f'./in/FN{rumor_number}_DD.xlsx'
 	tweet_data = openpyxl.load_workbook(path_input)['Sheet1']
@@ -242,18 +284,106 @@ def main():
 
 	print(tweet_net.GetEdges())
 
+	user_net = snap.ConvertGraph(snap.PNEANet, snap.TNGraph.Load(snap.TFIn(path_graph)))
+	user_id_all = []
+	with open(path_jsonl, 'r') as f:
+		for line in f:
+			x = len(line)
+			user_id_all.append(line[0:x - 1])  # Trim trailing line feeds
+	user_id_all.pop(0)
+
+	user_net_nx = nx.DiGraph()
+
+	h, node = 0, 0
+	tweeters_nid = []
+	uid_to_node = {}
+	base_time = timestamp[-1]
+	for ni in user_net.Nodes():
+		tweet_id_all = []
+		retweet_id_all = []
+		num_retweets_all = []
+		timestamp_all = []
+		user_label_all = []
+		frequency_all = []
+		user_net.AddStrAttrDatN(ni, user_id_all[h], 'user_id')
+
+		if user_id_all[h] in user_id:
+			tweeters_nid.append(ni.GetId())
+
+			idx = user_id.index(user_id_all[h])
+			user_net.AddIntAttrDatN(ni, num_tweets[idx], 'num_tweets')
+			user_net.AddIntAttrDatN(ni, num_followers[idx], 'num_followers')
+			user_net.AddIntAttrDatN(ni, num_following[idx], 'num_following')
+			user_occurrences = [index for index, value in enumerate(user_id) if value == user_id_all[h]]
+			num_user_occurrences = len(user_occurrences)
+			user_net.AddIntAttrDatN(ni, num_user_occurrences, 'num_user_occurrences')
+			# f = 1
+
+			for i in user_occurrences:
+				tweet_id_all.append(tweet_id[i])
+				retweet_id_all.append(retweet_id[i])
+				num_retweets_all.append(num_retweets[i])
+				timestamp_all.append(timestamp[i] - base_time)
+				frequency_all.append(frequency[i])
+
+				if label[i] == 'r':
+					if retweet_id[i] != '':
+						user_label_all.append('RR')  # RR = Rumor Retweeter
+					else:
+						user_label_all.append('RT')  # RT = Rumor Tweeter
+				elif label[i] == 'a':
+					if retweet_id[i] != '':
+						user_label_all.append('AR')  # AR = Anti-Rumor Retweeter
+					else:
+						user_label_all.append('AT')  # AT = Anti-Rumor Tweeter
+				else:
+					user_label_all.append(label[i].upper())  # Q = Questioner, N = Non-Related
+
+				# f += 1
+
+			user_net.AddStrAttrDatN(ni, str(tweet_id_all), 'tweet_id')
+			user_net.AddStrAttrDatN(ni, str(retweet_id_all), 'retweet_id')
+			user_net.AddStrAttrDatN(ni, str(num_retweets_all), 'num_retweets')
+			user_net.AddStrAttrDatN(ni, str(timestamp_all), 'timestamp')
+			user_net.AddStrAttrDatN(ni, str(user_label_all), 'user_label')
+			user_net.AddStrAttrDatN(ni, str(frequency_all), 'frequency')
+
+			user_net_nx.add_node(
+						node,
+						user_id=user_id_all[h],
+						num_tweets=num_tweets[idx],
+						num_followers=num_followers[idx],
+						num_following=num_following[idx],
+						label=summarize_label(user_label_all)
+			)
+			uid_to_node[user_id_all[h]] = node
+			node += 1
+
+		h += 1
+
+	for edge in user_net.Edges():
+		src_id = edge.GetSrcNId()
+		dst_id = edge.GetDstNId()
+		if src_id in tweeters_nid and dst_id in tweeters_nid:
+			src_uid = user_net.GetStrAttrDatN(src_id, 'user_id')
+			dst_uid = user_net.GetStrAttrDatN(dst_id, 'user_id')
+			src_nid = uid_to_node[src_uid]
+			dst_nid = uid_to_node[dst_uid]
+			user_net_nx.add_edge(src_nid, dst_nid)
+
 	label_dict = {n: label[n] for n in range(len(tweet_id))}
 	nx.set_node_attributes(tweet_net_nx, label_dict, 'label')
 
-	plot_components(tweet_net)
-	plot_degrees(tweet_net)
-	print_hubs(tweet_net_nx)
+	# plot_components(tweet_net)
+	# plot_degrees(tweet_net)
+	# print_hubs(tweet_net_nx)
 
 	baseline_timestamp = timestamp[-1]
 	n_hours = 128
 	nodes = [i for i in range(len(timestamp)) if timestamp[i] - baseline_timestamp <= n_hours * 60 * 60]
 
-	draw_network(tweet_net_nx, label, nodes=None, spring_fac=6)
+	# draw_network(tweet_net_nx, label, nodes=None, spring_fac=6)
+	draw_user_network(user_net_nx)
 
 if __name__ == '__main__':
 	main()
