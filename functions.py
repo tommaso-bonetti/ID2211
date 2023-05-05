@@ -1,4 +1,5 @@
 import numpy as np
+import instance
 
 class StrengthFunction:
     def __init__(self):
@@ -45,11 +46,11 @@ class ParameterLearner:
         self.print_progress=True
         
     def learn(self, instances):
-        nf = instances[0].GetNumFeatures()
+        nf = instance[0].GetNumFeatures()
         w0 = np.full(nf, 0.000001)
         
         def objective_function(x):
-            return instances.CalcCost(self.weighter, self.alpha, self.costf, x)
+            return instance.CalcCost(self.weighter, self.alpha, self.costf, x)
         
         display = 'iter' if self.print_progress else 'off'
         
