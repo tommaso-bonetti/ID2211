@@ -19,14 +19,13 @@ class Instance:
 	def compute_cost(self, strength_fun: StrengthFunction, w: np.array, cost_fun: CostFunction, alpha: float) -> float:
 		"""
 		Computes the cost for the given weight parameters as defined by Leskovec. The strength and cost functions need
-		to be
-		specified as well as the restart probability.
+		to be specified as well as the restart probability.
 
 		:param strength_fun: the strength function used to compute the PageRank transition probabilities.
 		:param w: the weight parameters for the strength function.
 		:param cost_fun: the cost function.
 		:param alpha: the PageRank restart probability.
-		:return: a double.
+		:return: the cost (float).
 		"""
 
 		page_rank = self.compute_page_rank(strength_fun, w, alpha)
@@ -59,7 +58,7 @@ class Instance:
 
 		# Compute the squared sum of the rows of the adjacency matrix
 		row_sums = np.sum(adj_mat, 1)
-		row_sums_sq = np.power(row_sums, 2)
+		row_sums_sq = row_sums ** 2
 
 		# Compute the transition probability matrix with respect to a starting node s
 		Q = self.compute_transition_prob_matrix(adj_mat, alpha, row_sums)
@@ -73,8 +72,8 @@ class Instance:
 		last_iteration = 0
 		i = 1
 		while i < 100 and last_iteration == 0:
-			p[:, i] = Q.T @ p[:, i - 1]
-			if np.sum(np.power(p[:, i] - p[:, i - 1], 2)) < 1e-12:
+			p[:, i] = Q.T @ p[:, i-1]
+			if np.sum((p[:, i] - p[:, i-1]) ** 2) < 1e-12:
 				last_iteration = i
 			if i == 99:
 				print('p did not converge.')
@@ -96,7 +95,7 @@ class Instance:
 			conv = False
 			while i < 100 and not conv:
 				diff_p_t1 = Q.T @ diff_p_t2 + diff_Q.T * p[:, min(i, last_iteration)]
-				if np.sum(np.power(diff_p_t2 - diff_p_t1, 2)) < 1e-12:
+				if np.sum((diff_p_t2 - diff_p_t1) ** 2) < 1e-12:
 					conv = True
 
 				diff_p_t2 = diff_p_t1
@@ -144,7 +143,7 @@ class Instance:
 			page_rank_curr = Q.T @ page_rank_prev
 			page_rank_curr /= np.sum(page_rank_curr)
 
-			if np.sum(np.power(page_rank_curr - page_rank_prev, 2)) < 1e-12:
+			if np.sum((page_rank_curr - page_rank_prev) ** 2) < 1e-12:
 				conv = True
 			if i == 99:
 				print('p did not converge.')
@@ -182,3 +181,61 @@ class Instance:
 		res[:, src_idx] += alpha
 
 		return res
+
+class Instances:
+	# Instances represents a set of source/positive/negative groups with the respective graphs, which can be used as a
+	# training or test dataset for link prediction.
+
+	instances: list[Instance] = None
+	n: int = None
+
+	def __init__(self, instances: list[Instance]):
+		self.instances = instances
+		self.n = len(instances)
+
+	def num_instances(self):
+		return self.n
+
+	def compute_cost_and_grad(self, strength_fun: StrengthFunction, w: np.array, cost_fun: CostFunction, alpha: float):
+		"""
+		Computes the cost and gradient for the instances using the given cost function by invoking the
+		compute_cost_and_grad method on each instance.
+
+		:param strength_fun: the strength function.
+		:param w: the weight parameters
+		:param cost_fun: the cost function.
+		:param alpha: the restart probability.
+		:return: the cumulative cost (float) and the cumulative gradient (a float for each feature).
+		"""
+
+		costs = np.zeros(self.n)
+		gradients = np.zeros((self.n, w.size))
+
+		for i, instance in enumerate(self.instances):
+			temp_c, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
+			costs[i] = temp_c
+			gradients[i, :] = temp_g
+
+		cost = np.sum(w ** 2) + np.sum(costs)
+		gradient = 2 * w + np.sum(gradients)
+		return cost, gradient
+
+	def compute_cost(self, strength_fun: StrengthFunction, w: np.array, cost_fun: CostFunction, alpha: float):
+		"""
+		Computes the cost for the instances using the given cost function by invoking the compute_cost method on each
+		instance.
+
+		:param strength_fun: the strength function.
+		:param w: the weight parameter.
+		:param cost_fun: the cost function.
+		:param alpha: the restart probability.
+		:return: the cumulative cost (float).
+		"""
+
+		costs = np.zeros(self.n)
+		for i, instance in enumerate(self.instances):
+			temp_c, temp_g = instance.compute_cost(strength_fun, w, cost_fun, alpha)
+			costs[i] = temp_c
+
+		cost = np.sum(w ** 2) + np.sum(costs)
+		return cost

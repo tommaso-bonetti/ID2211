@@ -16,7 +16,7 @@ class GraphWrapper:
 		Computes a matrix containing the value of the specified feature for each potential edge.
 
 		:param name: the name of the desired feature.
-		:return: an n x n matrix of doubles.
+		:return: an n x n matrix of floats.
 		"""
 
 		feature_dict = nx.get_edge_attributes(self.graph, name)
@@ -42,7 +42,7 @@ class GraphWrapper:
 
 		:param strength: the strength function.
 		:param w: the weight parameters.
-		:return: an n x n matrix of doubles.
+		:return: an n x n matrix of float.
 		"""
 
 		dot_product = np.zeros((self.graph.number_of_nodes(), self.graph.number_of_nodes()))
