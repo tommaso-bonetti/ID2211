@@ -1,18 +1,18 @@
 import numpy as np
 
 class StrengthFunction:
-	compute_strength = None
-	compute_gradient = None
+	def compute_strength(self):
+		return
 
-	def __init__(self, strength, gradient):
-		self.compute_strength = strength
-		self.compute_gradient = gradient
+	def compute_gradient(self):
+		return
 
 class CostFunction:
-	compute_cost = None
-	compute_gradient = None
-	compute_cost_and_gradient = None
+	def compute_cost(self):
+		return
 
-	def __init__(self, cost, gradient):
-		self.compute_cost = cost
-		self.compute_gradient = gradient
+	def compute_gradient(self):
+		return
+
+	def compute_cost_and_gradient(self):
+		return
