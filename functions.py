@@ -1,8 +1,8 @@
 import numpy as np
 
 class StrengthFunction:
-    def __init__(self, weight_type):
-        self.type = weight_type
+    def __init__(self):
+        self.type = 1
     
     def compute_strength(self, dot_product):
         if self.type == 1:
