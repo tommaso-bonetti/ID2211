@@ -3,7 +3,7 @@ import numpy as np
 
 from functions import StrengthFunction
 
-class GraphDecorator:
+class GraphWrapper:
 	graph: nx.DiGraph = None
 	features: list[str] = []
 

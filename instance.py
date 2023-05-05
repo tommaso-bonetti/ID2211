@@ -1,16 +1,16 @@
 import numpy as np
 
 from functions import StrengthFunction, CostFunction
-from graph import GraphDecorator
+from graph import GraphWrapper
 
 class Instance:
 	# Instance holds information on positive and negative links for a source node in a graph.
 	source_node_index: int = None
 	positive_links: np.array = None
 	negative_links: np.array = None
-	graph: GraphDecorator = None
+	graph: GraphWrapper = None
 
-	def __init__(self, src: int, positive: list[int], negative: list[int], graph: GraphDecorator):
+	def __init__(self, src: int, positive: list[int], negative: list[int], graph: GraphWrapper):
 		self.source_node_index = src
 		self.positive_links = np.array(positive)
 		self.negative_links = np.array(negative)
@@ -91,7 +91,7 @@ class Instance:
 			# TICK -> start timer?
 
 			# Compute dQ
-			diff_Q = self.compute_diff_Q(strength_fun, w, alpha, feat, k, adj_mat, row_sums, row_sums_sq)
+			diff_Q = self.compute_diff_Q(strength_fun, w[k], alpha, feat, adj_mat, row_sums, row_sums_sq)
 			i = 0
 			conv = False
 			while i < 100 and not conv:
@@ -156,15 +156,14 @@ class Instance:
 	def compute_diff_Q(
 				self,
 				strength_fun: StrengthFunction,
-				w: np.array,
+				w_k: float,
 				alpha: float,
 				feat: str,
-				k: int,
 				adj_mat: np.array,
 				row_sums: np.array,
 				row_sums_sq: np.array) -> np.array:
 
-		diff_u = self.graph.get_adj_matrix() * strength_fun.compute_gradient(w[k], self.graph.get_feature(feat))
+		diff_u = self.graph.get_adj_matrix() * strength_fun.compute_gradient(w_k, self.graph.get_feature(feat))
 		row_sums_u = np.sum(diff_u, 1)
 		res = (1 - alpha) * (diff_u * row_sums - adj_mat * row_sums_u) / row_sums_sq
 		return res
