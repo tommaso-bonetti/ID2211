@@ -1,11 +1,21 @@
 import numpy as np
 
 class StrengthFunction:
-	def compute_strength(self):
-		return
-
-	def compute_gradient(self):
-		return
+    def __init__(self, weight_type):
+        self.type = weight_type
+    
+    def compute_strength(self, dot_product):
+        if self.type == 1:
+            return np.exp(dot_product)
+        else:
+            return 1 / (1 + np.exp(-dot_product))
+        
+    def compute_gradient(self, w, psi):
+        if self.type == 1:
+            return psi * np.exp(psi * w)
+        else:
+            return psi * np.exp(-psi * w) / (1 + np.exp(-psi * w))**2
+	    
 class CostFunction:
     def __init__(self):
         self.b = .00001
