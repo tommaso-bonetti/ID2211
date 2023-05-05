@@ -43,3 +43,24 @@ class ParameterLearner:
         self.alpha=0.3
         self.time_limit=30
         self.print_progress=True
+        
+    def learn(self, instances):
+        nf = instances[0].GetNumFeatures()
+        w0 = np.full(nf, 0.000001)
+        
+        def objective_function(x):
+            return instances.CalcCost(self.weighter, self.alpha, self.costf, x)
+        
+        display = 'iter' if self.print_progress else 'off'
+        
+        options = snap.TSASimAnnOptions()
+        options.Display = display
+        options.ReannealInterval = 10
+        options.ObjectiveLimit = nf + 1
+        options.TimeLimit = self.time_limit
+        options.TemperatureFunction = snap.TSABoltzmann
+        options.Tolerance = 1e-10
+        
+        w = snap.TSASimAnnMinimize(objective_function, w0, -3 * np.ones(nf), 3 * np.ones(nf), options)
+        
+        return w
