@@ -66,8 +66,8 @@ class Instance:
 		#   this.graph.num_nodes, i, j, v_adjMat, this.source_node_index, alpha, v_sum_fuv_w)
 
 		# Compute PageRank
-		p = np.zeros(self.graph.num_nodes(), 100)
-		p[:, 0] = np.ones((self.graph.num_nodes(), 1)) / self.graph.num_nodes()
+		p = np.zeros(self.graph.get_size(), 100)
+		p[:, 0] = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
 
 		last_iteration = 0
 		i = 1
@@ -81,12 +81,12 @@ class Instance:
 		page_rank = p[:, last_iteration]
 
 		# Compute the derivative for every feature
-		diff_p = np.zeros((self.graph.num_features(), self.graph.num_nodes()))
+		diff_p = np.zeros((self.graph.num_features(), self.graph.get_size()))
 
 		for k, feat in enumerate(self.graph.get_features()):
 			# Initialize gradient
-			diff_p_t1 = np.zeros(self.graph.num_nodes())
-			diff_p_t2 = np.zeros(self.graph.num_nodes())
+			diff_p_t1 = np.zeros(self.graph.get_size())
+			diff_p_t2 = np.zeros(self.graph.get_size())
 			# TICK -> start timer?
 
 			# Compute dQ
@@ -134,8 +134,8 @@ class Instance:
 		Q = self.compute_transition_prob_matrix(adj_mat, alpha, row_sums)
 
 		# Compute the	actual PageRank	using	the transition probability matrix
-		page_rank_curr = np.ones((self.graph.num_nodes(), 1)) / self.graph.num_nodes()
-		page_rank_prev = np.ones((self.graph.num_nodes(), 1)) / self.graph.num_nodes()
+		page_rank_curr = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
+		page_rank_prev = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
 
 		conv = False
 		i = 0
@@ -168,7 +168,7 @@ class Instance:
 		return res
 
 	def compute_transition_prob_matrix(self, adj_mat: np.array, alpha: float, row_sums: np.array) -> np.array:
-		n = self.graph.num_nodes()
+		n = self.graph.get_size()
 		src_idx = self.source_node_index
 
 		# Normalize the adjacency matrix to make it stochastic
