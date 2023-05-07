@@ -144,7 +144,23 @@ def fetch_graph(rumor_number: int) -> tuple[nx.DiGraph, list[str]]:
 
 	return tweet_net, user_id
 
-def compute_features(tweet_graph: nx.DiGraph, user_graph: snap.TNEANet, uid_to_nid: dict[str: int]) -> dict[str: np.array]:
+def load_feature(feature: str, rumor_number: int, size: int):
+	path_prefix = f'./dump/FN{rumor_number}_'
+	res = np.load(path_prefix + feature + '.npy')
+	return res[:size, :size]
+
+def save_feature(values: np.array, feature: str, rumor_number: int):
+	path_prefix = f'./dump/FN{rumor_number}_'
+	np.save(path_prefix + feature + '.npy', values)
+
+# noinspection PyCallingNonCallable
+def compute_features(
+			rumor_number: int,
+			tweet_graph: nx.DiGraph,
+			user_graph: snap.TNEANet,
+			uid_to_nid: dict[str: int],
+			load_user_features: bool = False) -> dict[str: np.array]:
+
 	n = len(tweet_graph)
 
 	src_num_tweets = np.zeros((n, n))
@@ -164,13 +180,13 @@ def compute_features(tweet_graph: nx.DiGraph, user_graph: snap.TNEANet, uid_to_n
 	dst_in_degree_true = np.zeros((n, n))
 	dst_out_degree = np.zeros((n, n))
 
+	src_dst_same = np.zeros((n, n))
 	src_follows_dst = np.zeros((n, n))
 	dst_follows_src = np.zeros((n, n))
 	shortest_path_dir = np.zeros((n, n))
 	# shortest_path_rev = np.zeros((n, n))
 	# shortest_path_undir = np.zeros((n, n))
 	common_neighbors = np.zeros((n, n))
-	src_dst_same = np.zeros((n, n))
 
 	for i in range(n):
 		if i % 50 == 0:
@@ -190,34 +206,45 @@ def compute_features(tweet_graph: nx.DiGraph, user_graph: snap.TNEANet, uid_to_n
 
 			true_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'a' or n == j])
 			false_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'r' or n == j])
-			dst_in_degree[i, j] = tweet_graph.in_degree(j) / (len(tweet_graph) - 1)
-			dst_in_degree_true[i, j] = true_graph.in_degree(j) / (len(true_graph) - 1)
-			dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph) - 1)
+			dst_in_degree[i, j] = tweet_graph.in_degree(j) / (len(tweet_graph))
+			dst_in_degree_true[i, j] = true_graph.in_degree(j) / (len(true_graph))
+			dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph))
 			dst_out_degree[i, j] = tweet_graph.out_degree(j)
 
 			src_uid = tweet_graph.nodes[i]['user_id']
 			dst_uid = tweet_graph.nodes[j]['user_id']
-			src_nid = -1 if src_uid not in uid_to_nid.keys() else uid_to_nid[src_uid]
-			dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
-			if src_nid == -1 or dst_nid == -1:
-				edge, edge_rev, sp_dir, sp_rev, sp_undir, cn = False, False, -1, -1, -1, 0
-			elif src_uid == dst_uid:
-				edge, edge_rev, sp_dir, sp_rev, sp_undir, cn = False, False, 0, 0, 0, 0
-			else:
-				edge = user_graph.IsEdge(src_nid, dst_nid)
-				edge_rev = user_graph.IsEdge(dst_nid, src_nid)
-				sp_dir = user_graph.GetShortPath(src_nid, dst_nid, True)
-				# sp_rev = user_graph.GetShortPath(dst_nid, src_nid, True)
-				# sp_undir = user_graph.GetShortPath(src_nid, dst_nid, False)
-				cn = user_graph.GetCmnNbrs(src_nid, dst_nid, False)
+			src_dst_same[i, j] = int(src_uid == dst_uid)
 
-			src_follows_dst[i, j] = edge
-			dst_follows_src[i, j] = edge_rev
-			shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
-			# shortest_path_rev[i, j] = 0 if sp_rev == -1 else 1 / sp_rev
-			# shortest_path_undir[i, j] = 0 if sp_undir == -1 else 1 / sp_undir
-			common_neighbors[i, j] = cn
-			src_dst_same[i, j] = int(sp_dir == 0)
+			if not load_user_features:
+				src_nid = -1 if src_uid not in uid_to_nid.keys() else uid_to_nid[src_uid]
+				dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
+				if src_nid == -1 or dst_nid == -1:
+					edge, edge_rev, sp_dir, sp_rev, sp_undir, cn = False, False, -1, -1, -1, 0
+				elif src_uid == dst_uid:
+					edge, edge_rev, sp_dir, sp_rev, sp_undir, cn = False, False, 0, 0, 0, 0
+				else:
+					pass
+					edge = user_graph.IsEdge(src_nid, dst_nid)
+					edge_rev = user_graph.IsEdge(dst_nid, src_nid)
+					sp_dir = user_graph.GetShortPath(src_nid, dst_nid, True)
+					# sp_rev = user_graph.GetShortPath(dst_nid, src_nid, True)
+					# sp_undir = user_graph.GetShortPath(src_nid, dst_nid, False)
+					cn = user_graph.GetCmnNbrs(src_nid, dst_nid, False)
+
+				src_follows_dst[i, j] = edge
+				dst_follows_src[i, j] = edge_rev
+				shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
+				# shortest_path_rev[i, j] = 0 if sp_rev == -1 else 1 / sp_rev
+				# shortest_path_undir[i, j] = 0 if sp_undir == -1 else 1 / sp_undir
+				common_neighbors[i, j] = cn
+
+	if load_user_features:
+		src_follows_dst = load_feature('src_follows_dst', rumor_number, n)
+		dst_follows_src = load_feature('dst_follows_src', rumor_number, n)
+		shortest_path_dir = load_feature('shortest_path_dir', rumor_number, n)
+		common_neighbors = load_feature('common_neighbors', rumor_number, n)
+	else:
+		save_feature(src_follows_dst, 'src_follows_dst', rumor_number)
 
 	res = {
 		'src_num_tweets': src_num_tweets,
@@ -235,41 +262,14 @@ def compute_features(tweet_graph: nx.DiGraph, user_graph: snap.TNEANet, uid_to_n
 		'dst_in_degree_false': dst_in_degree_false,
 		'dst_in_degree_true': dst_in_degree_true,
 		'dst_out_degree': dst_out_degree,
+		'src_dst_same': src_dst_same,
 		'src_follows_dst': src_follows_dst,
 		'dst_follows_src': dst_follows_src,
 		'shortest_path_dir': shortest_path_dir,
 		# 'shortest_path_rev': shortest_path_rev,
 		# 'shortest_path_undir': shortest_path_undir,
-		'common_neighbors': common_neighbors,
-		'src_dst_same': src_dst_same
+		'common_neighbors': common_neighbors
 	}
-
-	return res
-
-def save_features(features: dict[str: np.array], rumor_number: int):
-	path_prefix = f'./dump/FN{rumor_number}_'
-
-	keys = open(path_prefix + 'features.txt', 'w')
-	keys.write('\n'.join(features.keys()) + '\n')
-	keys.close()
-
-	for k, v in features.items():
-		np.save(path_prefix + k + '.npy', v)
-
-def load_features(rumor_number: int):
-	res = {}
-	path_prefix = f'./dump/FN{rumor_number}_'
-
-	keys = []
-	f = open(path_prefix + 'features.txt', 'r')
-	for line in f:
-		x = len(line)
-		keys.append(line[:x-1])
-	f.close()
-
-	for k in keys:
-		v = np.load(path_prefix + k + '.npy')
-		res[k] = v
 
 	return res
 
@@ -277,36 +277,33 @@ class GraphWrapper:
 	graph: nx.DiGraph = None
 	features: dict[str: np.array] = None
 
-	def __init__(self, rumor_number: int, time_offset: int = -1, num_nodes: int = -1, load: bool = False):
+	def __init__(self, rumor_number: int, time_offset: int = -1, num_nodes: int = -1, load_user_features: bool = False):
 		overall_graph, user_id = fetch_graph(rumor_number)
-		user_graph, uid_to_nid = fetch_user_graph(rumor_number, user_id)
+		if load_user_features:
+			user_graph, uid_to_nid = None, None
+		else:
+			user_graph, uid_to_nid = fetch_user_graph(rumor_number, user_id)
 
-		if time_offset >= 0:
+		if time_offset >= 0 and load_user_features:
 			node_list = []
 			for node, data in overall_graph.nodes.data():
 				if data['rel_timestamp'] <= time_offset:
 					node_list.append(node)
 			tweet_graph = overall_graph.subgraph(node_list)
-		elif num_nodes > 0:
+		elif num_nodes > 0 and load_user_features:
 			node_list = []
 			i = 0
 			for node in overall_graph:
-				node_list.append(node)
 				if i >= num_nodes:
 					break
+				node_list.append(node)
 				i += 1
 			tweet_graph = overall_graph.subgraph(node_list)
 		else:
 			tweet_graph = overall_graph
 
 		self.graph = tweet_graph
-
-		if not load:
-			features = compute_features(tweet_graph, user_graph, uid_to_nid)
-			save_features(features, rumor_number)
-		else:
-			features = load_features(rumor_number)
-		self.features = features
+		self.features = compute_features(rumor_number, tweet_graph, user_graph, uid_to_nid, load_user_features)
 
 	def get_feature(self, name: str) -> np.array:
 		"""
