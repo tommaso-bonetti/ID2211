@@ -1,7 +1,7 @@
 import numpy as np
 
 from functions import StrengthFunction, CostFunction
-from graph import GraphWrapper
+from graph import GraphData, GraphWrapper
 
 class Instance:
 	# Instance holds information on positive and negative links for a source node in a graph.
@@ -10,11 +10,11 @@ class Instance:
 	negative_links: np.array = None
 	graph: GraphWrapper = None
 
-	def __init__(self, src: int, positive: list[int], negative: list[int], graph: GraphWrapper):
+	def __init__(self, src: int, graph: GraphWrapper):
 		self.source_node_index = src
-		self.positive_links = np.array(positive)
-		self.negative_links = np.array(negative)
 		self.graph = graph
+		self.positive_links = graph.get_positive_links(src)
+		self.negative_links = graph.get_negative_links(src)
 
 	def compute_cost(self, strength_fun: StrengthFunction, w: np.array, cost_fun: CostFunction, alpha: float) -> float:
 		"""
@@ -186,12 +186,27 @@ class Instances:
 	# Instances represents a set of source/positive/negative groups with the respective graphs, which can be used as a
 	# training or test dataset for link prediction.
 
+	graph: GraphData = None
 	instances: list[Instance] = None
 	n: int = None
 
-	def __init__(self, instances: list[Instance]):
-		self.instances = instances
-		self.n = len(instances)
+	def __init__(self, rumor_number: int, timestamps: list[int] = None, sizes: list[int] = None):
+		self.graph = GraphData(rumor_number)
+		self.instances = []
+
+		if timestamps is not None:
+			for t in timestamps:
+				snapshot = self.graph.get_snapshot(time_offset=t)
+				self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
+		elif sizes is not None:
+			for s in sizes:
+				snapshot = self.graph.get_snapshot(num_nodes=s)
+				self.instances.append(Instance(s - 1, snapshot))
+		else:
+			snapshot = self.graph.get_snapshot()
+			self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
+
+		self.n = len(self.instances)
 
 	def num_instances(self):
 		return self.n
