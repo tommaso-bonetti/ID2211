@@ -1,2 +1,5 @@
 # ignore data files
 in/
+temptest.py
+temptesting2.py
+*.pyc

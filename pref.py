@@ -11,14 +11,20 @@ import snap
 #returns a graph with these nodes attatched by preferential attatchment
 #TODO, handel non connected nodes
 #TODO, should nodes be able to attatch to other nodes in the "nodes" list?
-def random_add_nodes(graph, nodes):
-    new_graph = graph
-    for node in nodes:
-        #calc wheight
-        weights = [0.1,0.1] #TODO 
-        nodelen = 2 #TODO 
+#TODO, give self connected nodes a weight?
+#TODO, add 1 base weight
+def pref_add_nodes(adjacency, toAdd):
+    #new_graph = graph
+    #adjacency = graph.get_adj_matrix()
+    nodelen = len(adjacency)
+    extended = np.vstack([adjacency, [0]*len(adjacency)])
+    extended = np.column_stack([extended, [0]*len(extended)])
+
+    for i in (range(toAdd)):
         #select node
-        np.random.choice(nodelen, 1, p=[0.1, 0, 0.3, 0.6, 0])
-        #attatch to new graph
-        print("temp")
-    return new_graph
+        #TODO, check
+        weights = sum(adjacency, axsis = 1)/np.sum(adjacency)
+        connection = np.random.choice(nodelen+i, 1, weights[:nodelen+i])
+        adjacency[connection][i+nodelen] = 1
+        #nodelen += 1
+    return extended
