@@ -1,5 +1,6 @@
 import numpy as np
 import instance
+from scipy.optimize import minimize
 
 class StrengthFunction:
     def __init__(self):
