@@ -52,16 +52,9 @@ class ParameterLearner:
         def objective_function(x):
             return instance.CalcCost(self.weighter, self.alpha, self.costf, x)
         
-        display = 'iter' if self.print_progress else 'off'
-        
-        options = snap.TSASimAnnOptions()
-        options.Display = display
-        options.ReannealInterval = 10
-        options.ObjectiveLimit = nf + 1
-        options.TimeLimit = self.time_limit
-        options.TemperatureFunction = snap.TSABoltzmann
-        options.Tolerance = 1e-10
-        
-        w = snap.TSASimAnnMinimize(objective_function, w0, -3 * np.ones(nf), 3 * np.ones(nf), options)
-        
-        return w
+        bounds = [(-3.0, 3.0) for _ in range(nf)]
+        options = {'maxiter': 1000, 'disp': self.print_progress, 'temperature': 'boltzmann',
+                   'tol': 1e-10, 'maxfun': nf + 1, 'time_limit': self.time_limit}
+        res = minimize(objective_function, w0, bounds=bounds, method='L-BFGS-B', options=options)
+
+        return res.x
