@@ -144,10 +144,10 @@ def fetch_graph(rumor_number: int) -> tuple[nx.DiGraph, list[str]]:
 
 	return tweet_net, user_id
 
-def load_feature(feature: str, rumor_number: int, size: int):
+def load_feature(feature: str, rumor_number: int):
 	path_prefix = f'./dump/FN{rumor_number}_'
 	res = np.load(path_prefix + feature + '.npy')
-	return res[:size, :size]
+	return res
 
 def save_feature(values: np.array, feature: str, rumor_number: int):
 	path_prefix = f'./dump/FN{rumor_number}_'
@@ -174,7 +174,7 @@ class GraphWrapper:
 		return self.features[name]
 
 	def get_features(self):
-		return list(self.features.keys())
+		return set(self.features.keys()) - {'src_label', 'dst_label'}
 
 	def get_adj_matrix(self) -> np.array:
 		return nx.to_numpy_array(self.graph)
@@ -191,8 +191,11 @@ class GraphWrapper:
 
 		dot_product = np.zeros((self.graph.number_of_nodes(), self.graph.number_of_nodes()))
 
-		for i, feat in enumerate(self.features):
-			dot_product += self.get_feature(feat) * w[i]
+		i = 0
+		for k, v in self.features.items():
+			if 'label' not in k:
+				dot_product += v * w[i]
+				i += 1
 
 		return self.get_adj_matrix() * strength_fun.compute_strength(dot_product)
 
@@ -200,19 +203,24 @@ class GraphWrapper:
 		return self.graph.number_of_nodes()
 
 	def num_features(self):
-		return len(self.features)
+		return len(self.features) - 2
 
 	def get_positive_links(self, src: int) -> np.array:
-		return np.copy(self.get_adj_matrix()[src])
+		adj_vec = self.get_adj_matrix()[src]
+		if np.sum(adj_vec) == 0:
+			adj_vec[src] = 1
+		return adj_vec.nonzero()[0]
 
 	def get_negative_links(self, src: int) -> np.array:
-		res = np.copy(self.get_adj_matrix()[src])
-		return np.ones(self.get_size()) - res
+		adj_vec = self.get_adj_matrix()[src]
+		if np.sum(adj_vec) == 0:
+			adj_vec[src] = 1
+
+		return (adj_vec == 0).nonzero()[0]
 
 class GraphData:
 	base_graph: nx.DiGraph = None
 	features: dict[str: np.array] = None
-	user_features: dict[str: np.array] = None
 	rumor_number: int = None
 	user_ids: list[str] = None
 
@@ -224,18 +232,15 @@ class GraphData:
 
 		self.rumor_number = rumor_number
 		overall_graph, user_ids = fetch_graph(rumor_number)
-		self.graph = overall_graph
+		self.base_graph = overall_graph
 		self.user_ids = user_ids
 
-		# keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
-		# 				'dst_num_following', 'src_timestamp', 'dst_timestamp', 'timestamp_diff', 'src_label', 'dst_label',
-		# 				'dst_in_degree', 'dst_in_degree_false', 'dst_in_degree_true', 'dst_out_degree', 'src_dst_same',
-		# 				'src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
-		# self.features = {k: None for k in keys}
-		keys = ['src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
-		self.user_features = {k: None for k in keys}
+		keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
+						'dst_num_following', 'src_timestamp', 'dst_timestamp', 'timestamp_diff', 'src_label', 'dst_label',
+						'src_dst_same', 'src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
+		self.features = {k: None for k in keys}
 
-	def fetch_user_features(self, load_from_memory: bool = False):
+	def fetch_static_features(self, load_from_memory: bool = False):
 		"""
 		Fetches the user graph-related features of the overall tweet graph. After this method executes, these features
 		will be saved in memory and loaded in the GraphData instance.
@@ -244,54 +249,21 @@ class GraphData:
 			them and saves them to memory.
 		"""
 
+		print('Fetching static features...')
 		n = self.base_graph.number_of_nodes()
 
 		if load_from_memory:
-			self.user_features['src_follows_dst'] = load_feature('src_follows_dst', self.rumor_number, n)
-			self.user_features['dst_follows_src'] = load_feature('dst_follows_src', self.rumor_number, n)
-			self.user_features['shortest_path_dir'] = load_feature('shortest_path_dir', self.rumor_number, n)
-			self.user_features['common_neighbors'] = load_feature('common_neighbors', self.rumor_number, n)
-
-			return
-
-		user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
-		src_follows_dst = np.zeros((n, n))
-		dst_follows_src = np.zeros((n, n))
-		shortest_path_dir = np.zeros((n, n))
-		common_neighbors = np.zeros((n, n))
-
-		for i in range(n):
-			if i % 50 == 0:
-				print(f'Node {i}')
-			for j in range(i):
-				src_uid = self.base_graph.nodes[i]['user_id']
-				dst_uid = self.base_graph.nodes[j]['user_id']
-				src_nid = -1 if src_uid not in uid_to_nid.keys() else uid_to_nid[src_uid]
-				dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
-
-				if src_nid == -1 or dst_nid == -1:
-					edge, edge_rev, sp_dir, cn = False, False, -1, 0
-				elif src_uid == dst_uid:
-					edge, edge_rev, sp_dir, cn = False, False, 0, 0
-				else:
-					edge = user_graph.IsEdge(src_nid, dst_nid)
-					edge_rev = user_graph.IsEdge(dst_nid, src_nid)
-					sp_dir = user_graph.GetShortPath(src_nid, dst_nid, True)
-					cn = user_graph.GetCmnNbrs(src_nid, dst_nid, False)
-
-				src_follows_dst[i, j] = edge
-				dst_follows_src[i, j] = edge_rev
-				shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
-				common_neighbors[i, j] = cn
-
-		save_feature(src_follows_dst, 'src_follows_dst', self.rumor_number)
-		save_feature(dst_follows_src, 'dst_follows_src', self.rumor_number)
-		save_feature(shortest_path_dir, 'shortest_path_dir', self.rumor_number)
-		save_feature(common_neighbors, 'common_neighbors', self.rumor_number)
-
-	# noinspection PyCallingNonCallable
-	def compute_dynamic_features(self, tweet_graph: nx.DiGraph) -> dict[str: np.array]:
-		n = len(tweet_graph)
+			user_graph, uid_to_nid = None, None
+			src_follows_dst = load_feature('src_follows_dst', self.rumor_number)
+			dst_follows_src = load_feature('dst_follows_src', self.rumor_number)
+			shortest_path_dir = load_feature('shortest_path_dir', self.rumor_number)
+			common_neighbors = load_feature('common_neighbors', self.rumor_number)
+		else:
+			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
+			src_follows_dst = np.zeros((n, n))
+			dst_follows_src = np.zeros((n, n))
+			shortest_path_dir = np.zeros((n, n))
+			common_neighbors = np.zeros((n, n))
 
 		src_num_tweets = np.zeros((n, n))
 		dst_num_tweets = np.zeros((n, n))
@@ -304,28 +276,83 @@ class GraphData:
 		timestamp_diff = np.zeros((n, n))
 		src_label = np.zeros((n, n), dtype=str)
 		dst_label = np.zeros((n, n), dtype=str)
+		src_dst_same = np.zeros((n, n))
+
+		for i in range(n):
+			if not load_from_memory and i % 50 == 0:
+				print(f'Node {i}')
+			for j in range(i):
+				src_num_tweets[i, j] = self.base_graph.nodes[i]['num_tweets']
+				dst_num_tweets[i, j] = self.base_graph.nodes[j]['num_tweets']
+				src_num_followers[i, j] = self.base_graph.nodes[i]['num_followers']
+				dst_num_followers[i, j] = self.base_graph.nodes[j]['num_followers']
+				src_num_following[i, j] = self.base_graph.nodes[i]['num_following']
+				dst_num_following[i, j] = self.base_graph.nodes[j]['num_following']
+				src_timestamp[i, j] = self.base_graph.nodes[i]['rel_timestamp']
+				dst_timestamp[i, j] = self.base_graph.nodes[j]['rel_timestamp']
+				timestamp_diff[i, j] = src_timestamp[i, j] - dst_timestamp[i, j]
+				src_label[i, j] = self.base_graph.nodes[i]['label']
+				dst_label[i, j] = self.base_graph.nodes[j]['label']
+				src_uid = self.base_graph.nodes[i]['user_id']
+				dst_uid = self.base_graph.nodes[j]['user_id']
+				src_dst_same[i, j] = int(src_uid == dst_uid)
+
+				if not load_from_memory:
+					src_uid = self.base_graph.nodes[i]['user_id']
+					dst_uid = self.base_graph.nodes[j]['user_id']
+					src_nid = -1 if src_uid not in uid_to_nid.keys() else uid_to_nid[src_uid]
+					dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
+
+					if src_nid == -1 or dst_nid == -1:
+						edge, edge_rev, sp_dir, cn = False, False, -1, 0
+					elif src_uid == dst_uid:
+						edge, edge_rev, sp_dir, cn = False, False, 0, 0
+					else:
+						edge = user_graph.IsEdge(src_nid, dst_nid)
+						edge_rev = user_graph.IsEdge(dst_nid, src_nid)
+						sp_dir = user_graph.GetShortPath(src_nid, dst_nid, True)
+						cn = user_graph.GetCmnNbrs(src_nid, dst_nid, False)
+
+					src_follows_dst[i, j] = edge
+					dst_follows_src[i, j] = edge_rev
+					shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
+					common_neighbors[i, j] = cn
+
+		self.features['src_num_tweets'] = src_num_tweets
+		self.features['dst_num_tweets'] = dst_num_tweets
+		self.features['src_num_followers'] = src_num_followers
+		self.features['dst_num_followers'] = dst_num_followers
+		self.features['src_num_following'] = src_num_following
+		self.features['dst_num_following'] = dst_num_following
+		self.features['src_timestamp'] = src_timestamp
+		self.features['dst_timestamp'] = dst_timestamp
+		self.features['timestamp_diff'] = timestamp_diff
+		self.features['src_label'] = src_label
+		self.features['dst_label'] = dst_label
+		self.features['src_dst_same'] = src_dst_same
+		self.features['src_follows_dst'] = src_follows_dst
+		self.features['dst_follows_src'] = dst_follows_src
+		self.features['shortest_path_dir'] = shortest_path_dir
+		self.features['common_neighbors'] = common_neighbors
+
+		if not load_from_memory:
+			save_feature(src_follows_dst, 'src_follows_dst', self.rumor_number)
+			save_feature(dst_follows_src, 'dst_follows_src', self.rumor_number)
+			save_feature(shortest_path_dir, 'shortest_path_dir', self.rumor_number)
+			save_feature(common_neighbors, 'common_neighbors', self.rumor_number)
+
+		print('Fetching complete')
+
+	# noinspection PyCallingNonCallable
+	def compute_dynamic_features(self, tweet_graph: nx.DiGraph) -> dict[str: np.array]:
+		n = len(tweet_graph)
 		dst_in_degree = np.zeros((n, n))
 		dst_in_degree_false = np.zeros((n, n))
 		dst_in_degree_true = np.zeros((n, n))
 		dst_out_degree = np.zeros((n, n))
-		src_dst_same = np.zeros((n, n))
 
 		for i in range(n):
-			if i % 50 == 0:
-				print(f'Node {i}')
 			for j in range(i):
-				src_num_tweets[i, j] = tweet_graph.nodes[i]['num_tweets']
-				dst_num_tweets[i, j] = tweet_graph.nodes[j]['num_tweets']
-				src_num_followers[i, j] = tweet_graph.nodes[i]['num_followers']
-				dst_num_followers[i, j] = tweet_graph.nodes[j]['num_followers']
-				src_num_following[i, j] = tweet_graph.nodes[i]['num_following']
-				dst_num_following[i, j] = tweet_graph.nodes[j]['num_following']
-				src_timestamp[i, j] = tweet_graph.nodes[i]['rel_timestamp']
-				dst_timestamp[i, j] = tweet_graph.nodes[j]['rel_timestamp']
-				timestamp_diff[i, j] = src_timestamp[i, j] - dst_timestamp[i, j]
-				src_label[i, j] = tweet_graph.nodes[i]['label']
-				dst_label[i, j] = tweet_graph.nodes[j]['label']
-
 				true_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'a' or n == j])
 				false_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'r' or n == j])
 				dst_in_degree[i, j] = tweet_graph.in_degree(j) / (len(tweet_graph))
@@ -333,37 +360,11 @@ class GraphData:
 				dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph))
 				dst_out_degree[i, j] = tweet_graph.out_degree(j)
 
-				src_uid = tweet_graph.nodes[i]['user_id']
-				dst_uid = tweet_graph.nodes[j]['user_id']
-				src_dst_same[i, j] = int(src_uid == dst_uid)
-
-		src_follows_dst = self.user_features['src_follows_dst'][:n, :n]
-		dst_follows_src = self.user_features['dst_follows_src'][:n, :n]
-		shortest_path_dir = self.user_features['shortest_path_dir'][:n, :n]
-		common_neighbors = self.user_features['common_neighbors'][:n, :n]
-
-		res = {
-			'src_num_tweets': src_num_tweets,
-			'dst_num_tweets': dst_num_tweets,
-			'src_num_followers': src_num_followers,
-			'dst_num_followers': dst_num_followers,
-			'src_num_following': src_num_following,
-			'dst_num_following': dst_num_following,
-			'src_timestamp': src_timestamp,
-			'dst_timestamp': dst_timestamp,
-			'timestamp_diff': timestamp_diff,
-			'src_label': src_label,
-			'dst_label': dst_label,
-			'dst_in_degree': dst_in_degree,
-			'dst_in_degree_false': dst_in_degree_false,
-			'dst_in_degree_true': dst_in_degree_true,
-			'dst_out_degree': dst_out_degree,
-			'src_dst_same': src_dst_same,
-			'src_follows_dst': src_follows_dst,
-			'dst_follows_src': dst_follows_src,
-			'shortest_path_dir': shortest_path_dir,
-			'common_neighbors': common_neighbors
-		}
+		res = {k: v[:n, :n] for k, v in self.features.items()}
+		res['dst_in_degree'] = dst_in_degree
+		res['dst_in_degree_true'] = dst_in_degree_true
+		res['dst_in_degree_false'] = dst_in_degree_false
+		res['dst_out_degree'] = dst_out_degree
 
 		return res
 

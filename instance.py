@@ -62,12 +62,10 @@ class Instance:
 
 		# Compute the transition probability matrix with respect to a starting node s
 		Q = self.compute_transition_prob_matrix(adj_mat, alpha, row_sums)
-		# Q = this.calcTransitionProbabilityMatrixForSourceSparse(
-		#   this.graph.num_nodes, i, j, v_adjMat, this.source_node_index, alpha, v_sum_fuv_w)
 
 		# Compute PageRank
-		p = np.zeros(self.graph.get_size(), 100)
-		p[:, 0] = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
+		p = np.zeros((self.graph.get_size(), 100))
+		p[:, 0] = np.ones(self.graph.get_size()) / self.graph.get_size()
 
 		last_iteration = 0
 		i = 1
@@ -87,7 +85,6 @@ class Instance:
 			# Initialize gradient
 			diff_p_t1 = np.zeros(self.graph.get_size())
 			diff_p_t2 = np.zeros(self.graph.get_size())
-			# TICK -> start timer?
 
 			# Compute dQ
 			diff_Q = self.compute_diff_Q(strength_fun, w[k], alpha, feat, adj_mat, row_sums, row_sums_sq)
@@ -174,7 +171,7 @@ class Instance:
 		# Normalize the adjacency matrix to make it stochastic
 		res = np.zeros((n, n))
 		for i in range(n):
-			res[i] = adj_mat[i] / row_sums[i]
+			res[i] = adj_mat[i] / (1 if row_sums[i] == 0 else row_sums[i])
 		# Weight the transition normalized adjacency matrix
 		res *= 1 - alpha
 		# Add the restart probability
@@ -192,6 +189,7 @@ class Instances:
 
 	def __init__(self, rumor_number: int, timestamps: list[int] = None, sizes: list[int] = None):
 		self.graph = GraphData(rumor_number)
+		self.graph.fetch_static_features(True)
 		self.instances = []
 
 		if timestamps is not None:
@@ -199,12 +197,18 @@ class Instances:
 				snapshot = self.graph.get_snapshot(time_offset=t)
 				self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
 		elif sizes is not None:
-			for s in sizes:
+			dim = len(sizes)
+			for i, s in enumerate(sizes):
+				print(f'Loading snapshot {i+1}/{dim}...')
 				snapshot = self.graph.get_snapshot(num_nodes=s)
 				self.instances.append(Instance(s - 1, snapshot))
+			snapshot = self.graph.get_snapshot()
+			self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
 		else:
 			snapshot = self.graph.get_snapshot()
 			self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
+
+		print('Snapshots loaded')
 
 		self.n = len(self.instances)
 
@@ -249,8 +253,11 @@ class Instances:
 
 		costs = np.zeros(self.n)
 		for i, instance in enumerate(self.instances):
-			temp_c, temp_g = instance.compute_cost(strength_fun, w, cost_fun, alpha)
+			temp_c = instance.compute_cost(strength_fun, w, cost_fun, alpha)
 			costs[i] = temp_c
 
 		cost = np.sum(w ** 2) + np.sum(costs)
 		return cost
+
+	def num_features(self):
+		return self.instances[0].graph.num_features()

@@ -104,6 +104,33 @@ def print_hubs(network: nx.DiGraph, threshold: int = 10):
 	attractors = list(filter(lambda node: node[1] >= threshold, attractors))
 	print(attractors)
 
+def plot_growth(network: nx.DiGraph, attractor, min_timestamp, max_timestamp):
+	step = (max_timestamp - min_timestamp) / 30
+	time_frames = np.arange(min_timestamp, max_timestamp, step)
+	overall_degree = [0]
+	delta_degree = []
+
+	for t in time_frames:
+		node_list = [attractor]
+		for node, data in network.nodes.data():
+			if t <= data['timestamp'] < t + step:
+				node_list.append(node)
+
+		snapshot = network.subgraph(node_list)
+		degree = snapshot.in_degree[attractor]
+		delta_degree.append(degree)
+
+	for d in delta_degree:
+		overall_degree.append(overall_degree[-1] + d)
+
+	time_frames_bins = np.append(time_frames, max_timestamp)
+	overall = plt.plot(time_frames_bins - min_timestamp, overall_degree, color='orange')
+	delta = plt.twinx().plot(time_frames - min_timestamp + step/2, delta_degree, '^-')
+	plt.xlabel('Seconds since attractor tweet was posted')
+	plt.legend(overall + delta, ['Overall in-degree', 'In-degree variation'], loc=7)
+	plt.title('Variation of the main attractor\'s in-degree over time')
+	plt.show()
+
 def draw_network(
 			network: nx.Graph,
 			label: list[str],
@@ -239,6 +266,7 @@ def main():
 
 	# Add the tweets as nodes along with their attributes
 	for i in range(num_original_tweets):
+		tweet_net_nx.add_node(i, label=label[i], timestamp=timestamp[i])
 		tweet_net.AddNode(i)
 		for attr_name, attr_values in int_attrs.items():
 			tweet_net.AddIntAttrDatN(i, attr_values[i], attr_name)
@@ -275,6 +303,7 @@ def main():
 				tweet_net.AddNode(original)
 				tweet_net.AddStrAttrDatN(original, 'g', 'label')
 				label.append('g')
+				tweet_net_nx.add_node(original, label='g', timestamp=timestamp[i]-60)
 			else:
 				original = tweet_id.index(ref_id)
 
@@ -283,6 +312,13 @@ def main():
 			tweet_net_nx.add_edge(i, original)
 
 	print(tweet_net.GetEdges())
+
+	# draw_network(tweet_net_nx, label, nodes=None, spring_fac=6)
+	# plot_components(tweet_net)
+	# plot_degrees(tweet_net)
+	print_hubs(tweet_net_nx)
+	plot_growth(tweet_net_nx, 478, timestamp[478], timestamp[0])
+	return
 
 	user_net = snap.ConvertGraph(snap.PNEANet, snap.TNGraph.Load(snap.TFIn(path_graph)))
 	user_id_all = []
@@ -382,7 +418,6 @@ def main():
 	n_hours = 128
 	nodes = [i for i in range(len(timestamp)) if timestamp[i] - baseline_timestamp <= n_hours * 60 * 60]
 
-	# draw_network(tweet_net_nx, label, nodes=None, spring_fac=6)
 	draw_user_network(user_net_nx)
 
 if __name__ == '__main__':
