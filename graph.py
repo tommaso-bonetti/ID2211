@@ -3,8 +3,10 @@ from datetime import datetime
 
 import networkx as nx
 import numpy as np
+from numpy import ndarray
 import openpyxl
 import snap
+from scipy.sparse import csr_array, dok_array, coo_array, save_npz, load_npz
 
 from functions import StrengthFunction
 
@@ -77,10 +79,64 @@ def fetch_graph(rumor_number: int) -> tuple[nx.DiGraph, list[str]]:
 	baseline_timestamp = timestamp[0]
 	rel_timestamp = [t - baseline_timestamp for t in timestamp]
 
-	# Create the directed graph
 	num_original_tweets = len(tweet_id)
+
+	# Add the missing tweets
+	for i, rt, qt, rp in zip(range(num_original_tweets), retweet_id, quote_id, reply_id):
+		ref_id = None
+
+		if rt != '':
+			ref_id = rt
+		elif qt != '':
+			ref_id = qt
+		elif rp != '':
+			ref_id = rp
+
+		if ref_id is not None:
+			if ref_id not in tweet_id:
+				tweet_id.append(ref_id)
+				user_id.append('')
+				num_tweets.append(1)
+				language.append('')
+				num_followers.append(0)
+				num_following.append(0)
+				rel_timestamp.append(rel_timestamp[i] - 60)
+				num_likes.append(0)
+				num_retweets.append(int(ref_id == rt))
+				contains_tweet.append(False)
+				retweet_id.append('')
+				quote_id.append('')
+				reply_id.append('')
+				frequency.append(2)
+				label.append('g')
+			else:
+				original = tweet_id.index(ref_id)
+				num_retweets[original] += int(ref_id == rt)
+				frequency[original] += 1
+
+	# Sort nodes in chronological order
+	sorted_indices = [t[0] for t in sorted(enumerate(rel_timestamp), key=lambda t: t[1])]
+
+	user_id = [user_id[i] for i in sorted_indices]
+	num_tweets = [num_tweets[i] for i in sorted_indices]
+	language = [language[i] for i in sorted_indices]
+	num_followers = [num_followers[i] for i in sorted_indices]
+	num_following = [num_following[i] for i in sorted_indices]
+	rel_timestamp = [rel_timestamp[i] for i in sorted_indices]
+	num_likes = [num_likes[i] for i in sorted_indices]
+	num_retweets = [num_retweets[i] for i in sorted_indices]
+	contains_tweet = [contains_tweet[i] for i in sorted_indices]
+	tweet_id = [tweet_id[i] for i in sorted_indices]
+	retweet_id = [retweet_id[i] for i in sorted_indices]
+	quote_id = [quote_id[i] for i in sorted_indices]
+	reply_id = [reply_id[i] for i in sorted_indices]
+	frequency = [frequency[i] for i in sorted_indices]
+	label = [label[i] for i in sorted_indices]
+
+	# Create the directed graph
+	num_tweets_final = len(tweet_id)
 	tweet_net = nx.DiGraph()
-	tweet_net.add_nodes_from(range(num_original_tweets))
+	tweet_net.add_nodes_from(range(num_tweets_final))
 
 	# Add the node attributes to the graph
 	node_attrs = {
@@ -102,7 +158,7 @@ def fetch_graph(rumor_number: int) -> tuple[nx.DiGraph, list[str]]:
 	}
 
 	for name, values in node_attrs.items():
-		nx.set_node_attributes(tweet_net, dict(zip(range(num_original_tweets), values)), name)
+		nx.set_node_attributes(tweet_net, dict(zip(range(num_tweets_final), values)), name)
 
 	# Create the edges
 	for i, rt, qt, rp in zip(range(num_original_tweets), retweet_id, quote_id, reply_id):
@@ -116,70 +172,53 @@ def fetch_graph(rumor_number: int) -> tuple[nx.DiGraph, list[str]]:
 			ref_id = rp
 
 		if ref_id is not None:
-			if ref_id not in tweet_id:
-				tweet_id.append(ref_id)
-				original = tweet_id.index(ref_id)
-				label.append('g')
-				rel_timestamp.append(rel_timestamp[i] - 60)
-				tweet_net.add_node(
-							original,
-							user_id='',
-							num_tweets=0,
-							language='',
-							num_followers=0,
-							num_following=0,
-							rel_timestamp=rel_timestamp[i]-60,
-							num_likes=0,
-							num_retweets=0,
-							contains_tweet=False,
-							retweet_id='',
-							quote_id='',
-							reply_id='',
-							frequency=1,
-							label='g')
-			else:
-				original = tweet_id.index(ref_id)
-
+			original = tweet_id.index(ref_id)
 			tweet_net.add_edge(i, original)
 
 	return tweet_net, user_id
 
-def load_feature(feature: str, rumor_number: int):
+def load_feature(feature: str, rumor_number: int) -> dok_array:
 	path_prefix = f'./dump/FN{rumor_number}_'
-	res = np.load(path_prefix + feature + '.npy')
+	res = dok_array(load_npz(path_prefix + feature + '.npz'))
 	return res
 
-def save_feature(values: np.array, feature: str, rumor_number: int):
+def save_feature(values: dok_array, feature: str, rumor_number: int):
 	path_prefix = f'./dump/FN{rumor_number}_'
-	np.save(path_prefix + feature + '.npy', values)
+	save_npz(path_prefix + feature + '.npz', coo_array(values))
 
 class GraphWrapper:
+	original_graph: nx.DiGraph = None
 	graph: nx.DiGraph = None
-	features: dict[str: np.array] = None
+	adj_matrix: csr_array = None
+	features: dict[str: csr_array] = None
+	src_label: ndarray = None
+	dst_label: ndarray = None
 
-	def __init__(self, graph: nx.DiGraph, features: dict[str: np.array]):
+	def __init__(self, orig: nx.DiGraph, graph: nx.DiGraph, features: dict[str: csr_array], src_label: ndarray,
+								dst_label: ndarray):
+		self.original_graph = orig
 		self.graph = graph
+		self.adj_matrix = nx.to_scipy_sparse_array(self.graph, format='csr')
 		self.features = features
+		self.src_label = src_label
+		self.dst_label = dst_label
 
-	def get_feature(self, name: str) -> np.array:
+	def get_feature(self, name: str) -> csr_array:
 		"""
 		Computes a matrix containing the value of the specified feature for each potential edge.
 
 		:param name: the name of the desired feature.
 		:return: an n x n matrix of floats.
 		"""
-
-		if name not in self.features.keys():
-			raise KeyError('No such feature.')
 		return self.features[name]
 
-	def get_features(self):
-		return set(self.features.keys()) - {'src_label', 'dst_label'}
+	def get_features(self) -> set[str]:
+		return set(self.features.keys())
 
-	def get_adj_matrix(self) -> np.array:
-		return nx.to_numpy_array(self.graph)
+	def get_adj_matrix(self) -> csr_array:
+		return self.adj_matrix
 
-	def get_weighted_adj_matrix(self, strength_fun: StrengthFunction, w: np.array):
+	def get_weighted_adj_matrix(self, strength_fun: StrengthFunction, w: ndarray) -> csr_array:
 		"""
 		Uses the strength function and its parameters to combine the features of each edge into a single double value (the
 		strength).
@@ -189,40 +228,41 @@ class GraphWrapper:
 		:return: an n x n matrix of float.
 		"""
 
-		dot_product = np.zeros((self.graph.number_of_nodes(), self.graph.number_of_nodes()))
-
+		dot_product = csr_array((self.graph.number_of_nodes(), self.graph.number_of_nodes()))
 		i = 0
 		for k, v in self.features.items():
 			if 'label' not in k:
 				dot_product += v * w[i]
 				i += 1
 
-		return self.get_adj_matrix() * strength_fun.compute_strength(dot_product)
+		return self.adj_matrix * strength_fun.compute_strength(dot_product)
 
-	def get_size(self):
+	def get_size(self) -> int:
 		return self.graph.number_of_nodes()
 
-	def num_features(self):
-		return len(self.features) - 2
+	def num_features(self) -> int:
+		return len(self.features)
 
-	def get_positive_links(self, src: int) -> np.array:
-		adj_vec = self.get_adj_matrix()[src]
-		if np.sum(adj_vec) == 0:
-			adj_vec[src] = 1
-		return adj_vec.nonzero()[0]
+	def get_positive_link(self, src: int) -> int:
+		adj_vec = nx.to_numpy_array(self.original_graph)[src]
+		dst = np.where(adj_vec > 0)[0]
+		if dst.size == 0:
+			return src
+		return dst[0]
 
-	def get_negative_links(self, src: int) -> np.array:
-		adj_vec = self.get_adj_matrix()[src]
-		if np.sum(adj_vec) == 0:
-			adj_vec[src] = 1
-
-		return (adj_vec == 0).nonzero()[0]
+	def get_negative_links(self, src: int) -> ndarray:
+		nodes = np.array(range(self.get_size()))
+		adj_vec = np.delete(nodes, self.get_positive_link(src))
+		return adj_vec
 
 class GraphData:
 	base_graph: nx.DiGraph = None
-	features: dict[str: np.array] = None
+	adj_matrix: dok_array = None
+	features: dict[str: dok_array] = None
 	rumor_number: int = None
 	user_ids: list[str] = None
+	src_label: ndarray = None
+	dst_label: ndarray = None
 
 	def __init__(self, rumor_number: int):
 		"""
@@ -233,11 +273,16 @@ class GraphData:
 		self.rumor_number = rumor_number
 		overall_graph, user_ids = fetch_graph(rumor_number)
 		self.base_graph = overall_graph
+		self.adj_matrix = nx.to_scipy_sparse_array(self.base_graph, format='dok')
 		self.user_ids = user_ids
 
+		n = self.base_graph.number_of_nodes()
+		self.src_label = np.zeros((n, n), dtype=np.dtype('U1'))
+		self.dst_label = np.zeros((n, n), dtype=np.dtype('U1'))
+
 		keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
-						'dst_num_following', 'src_timestamp', 'dst_timestamp', 'timestamp_diff', 'src_label', 'dst_label',
-						'src_dst_same', 'src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
+						'dst_num_following', 'src_timestamp', 'dst_timestamp', 'timestamp_diff', 'src_dst_same',
+						'src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
 		self.features = {k: None for k in keys}
 
 	def fetch_static_features(self, load_from_memory: bool = False):
@@ -260,27 +305,28 @@ class GraphData:
 			common_neighbors = load_feature('common_neighbors', self.rumor_number)
 		else:
 			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
-			src_follows_dst = np.zeros((n, n))
-			dst_follows_src = np.zeros((n, n))
-			shortest_path_dir = np.zeros((n, n))
-			common_neighbors = np.zeros((n, n))
+			src_follows_dst = dok_array((n, n), dtype=np.int32)
+			dst_follows_src = dok_array((n, n), dtype=np.int32)
+			shortest_path_dir = dok_array((n, n), dtype=np.int32)
+			common_neighbors = dok_array((n, n), dtype=np.int32)
 
-		src_num_tweets = np.zeros((n, n))
-		dst_num_tweets = np.zeros((n, n))
-		src_num_followers = np.zeros((n, n))
-		dst_num_followers = np.zeros((n, n))
-		src_num_following = np.zeros((n, n))
-		dst_num_following = np.zeros((n, n))
-		src_timestamp = np.zeros((n, n))
-		dst_timestamp = np.zeros((n, n))
-		timestamp_diff = np.zeros((n, n))
-		src_label = np.zeros((n, n), dtype=str)
-		dst_label = np.zeros((n, n), dtype=str)
-		src_dst_same = np.zeros((n, n))
+		src_num_tweets = dok_array((n, n), dtype=np.int32)
+		dst_num_tweets = dok_array((n, n), dtype=np.int32)
+		src_num_followers = dok_array((n, n), dtype=np.int32)
+		dst_num_followers = dok_array((n, n), dtype=np.int32)
+		src_num_following = dok_array((n, n), dtype=np.int32)
+		dst_num_following = dok_array((n, n), dtype=np.int32)
+		src_timestamp = dok_array((n, n), dtype=np.int32)
+		dst_timestamp = dok_array((n, n), dtype=np.int32)
+		timestamp_diff = dok_array((n, n), dtype=np.int32)
+		src_dst_same = dok_array((n, n), dtype=np.int32)
 
+		# rows, cols = self.adj_matrix.nonzero()
+		# for i in np.unique(rows):
 		for i in range(n):
 			if not load_from_memory and i % 50 == 0:
 				print(f'Node {i}')
+			# for j in cols[np.where(rows == i)]:
 			for j in range(i):
 				src_num_tweets[i, j] = self.base_graph.nodes[i]['num_tweets']
 				dst_num_tweets[i, j] = self.base_graph.nodes[j]['num_tweets']
@@ -290,12 +336,13 @@ class GraphData:
 				dst_num_following[i, j] = self.base_graph.nodes[j]['num_following']
 				src_timestamp[i, j] = self.base_graph.nodes[i]['rel_timestamp']
 				dst_timestamp[i, j] = self.base_graph.nodes[j]['rel_timestamp']
-				timestamp_diff[i, j] = src_timestamp[i, j] - dst_timestamp[i, j]
-				src_label[i, j] = self.base_graph.nodes[i]['label']
-				dst_label[i, j] = self.base_graph.nodes[j]['label']
 				src_uid = self.base_graph.nodes[i]['user_id']
 				dst_uid = self.base_graph.nodes[j]['user_id']
 				src_dst_same[i, j] = int(src_uid == dst_uid)
+				timestamp_diff[i, j] = src_timestamp[i, j] - dst_timestamp[i, j]
+
+				self.src_label[i, j] = self.base_graph.nodes[i]['label']
+				self.dst_label[i, j] = self.base_graph.nodes[j]['label']
 
 				if not load_from_memory:
 					src_uid = self.base_graph.nodes[i]['user_id']
@@ -327,8 +374,6 @@ class GraphData:
 		self.features['src_timestamp'] = src_timestamp
 		self.features['dst_timestamp'] = dst_timestamp
 		self.features['timestamp_diff'] = timestamp_diff
-		self.features['src_label'] = src_label
-		self.features['dst_label'] = dst_label
 		self.features['src_dst_same'] = src_dst_same
 		self.features['src_follows_dst'] = src_follows_dst
 		self.features['dst_follows_src'] = dst_follows_src
@@ -344,15 +389,16 @@ class GraphData:
 		print('Fetching complete')
 
 	# noinspection PyCallingNonCallable
-	def compute_dynamic_features(self, tweet_graph: nx.DiGraph) -> dict[str: np.array]:
+	def compute_dynamic_features(self, tweet_graph: nx.DiGraph, mod_graph: nx.DiGraph) -> dict[str: csr_array]:
 		n = len(tweet_graph)
-		dst_in_degree = np.zeros((n, n))
-		dst_in_degree_false = np.zeros((n, n))
-		dst_in_degree_true = np.zeros((n, n))
-		dst_out_degree = np.zeros((n, n))
+		dst_in_degree = dok_array((n, n), dtype=np.int32)
+		dst_in_degree_false = dok_array((n, n), dtype=np.int32)
+		dst_in_degree_true = dok_array((n, n), dtype=np.int32)
+		dst_out_degree = dok_array((n, n), dtype=np.int32)
 
-		for i in range(n):
-			for j in range(i):
+		rows, cols = nx.to_scipy_sparse_array(mod_graph, format='dok').nonzero()
+		for i in np.unique(rows):
+			for j in cols[np.where(rows == i)]:
 				true_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'a' or n == j])
 				false_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'r' or n == j])
 				dst_in_degree[i, j] = tweet_graph.in_degree(j) / (len(tweet_graph))
@@ -360,13 +406,16 @@ class GraphData:
 				dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph))
 				dst_out_degree[i, j] = tweet_graph.out_degree(j)
 
-		res = {k: v[:n, :n] for k, v in self.features.items()}
-		res['dst_in_degree'] = dst_in_degree
-		res['dst_in_degree_true'] = dst_in_degree_true
-		res['dst_in_degree_false'] = dst_in_degree_false
-		res['dst_out_degree'] = dst_out_degree
+		res = {k: csr_array(v[:n, :n]) for k, v in self.features.items()}
+		res['dst_in_degree'] = csr_array(dst_in_degree)
+		res['dst_in_degree_true'] = csr_array(dst_in_degree_true)
+		res['dst_in_degree_false'] = csr_array(dst_in_degree_false)
+		res['dst_out_degree'] = csr_array(dst_out_degree)
 
-		return res
+		src = self.src_label[:n, :n]
+		dst = self.dst_label[:n, :n]
+
+		return res, src, dst
 
 	def get_snapshot(self, time_offset: int = -1, num_nodes: int = -1) -> GraphWrapper:
 		"""
@@ -390,17 +439,23 @@ class GraphData:
 
 		elif num_nodes > 0:
 			node_list = []
-			i = 0
 			for node in self.base_graph:
-				if i >= num_nodes:
-					break
 				node_list.append(node)
-				i += 1
+				if len(node_list) >= num_nodes:
+					break
 			res_graph = self.base_graph.subgraph(node_list)
 
 		else:
-			res_graph = self.base_graph.copy()
+			res_graph = self.base_graph
 
-		res_features = self.compute_dynamic_features(res_graph)
+		# Add links to all nodes from the source and make the graph undirected
+		mod_graph = nx.DiGraph(nx.DiGraph(res_graph).to_undirected())
+		for n in mod_graph.nodes:
+			mod_graph.add_edge(n, n)
+		last_node = len(mod_graph) - 1
+		for n in range(last_node):
+			mod_graph.add_edge(last_node, n)
 
-		return GraphWrapper(res_graph, res_features)
+		res_features, src_labels, dst_labels = self.compute_dynamic_features(res_graph, mod_graph)
+
+		return GraphWrapper(res_graph, mod_graph, res_features, src_labels, dst_labels)
