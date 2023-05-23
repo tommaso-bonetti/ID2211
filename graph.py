@@ -297,6 +297,8 @@ class GraphData:
 		print('Fetching static features...')
 		n = self.base_graph.number_of_nodes()
 
+		uid = [self.base_graph.nodes[i]['user_id'] for i in range(n)]
+
 		if load_from_memory:
 			user_graph, uid_to_nid = None, None
 			src_follows_dst = load_feature('src_follows_dst', self.rumor_number)
@@ -311,7 +313,7 @@ class GraphData:
 			shortest_path_dir = dok_array((n, n), dtype=np.int32)
 			jaccard_coeff = dok_array((n, n), dtype=np.float64)
 			out_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeOutDegV()}
-			out_degree = [out_degree_vec[uid_to_nid[self.base_graph.nodes[i]['user_id']]] for i in range(n)]
+			out_degree = [out_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
 
 		src_num_tweets = dok_array((n, n), dtype=np.int32)
 		dst_num_tweets = dok_array((n, n), dtype=np.int32)
@@ -348,8 +350,8 @@ class GraphData:
 				self.dst_label[i, j] = self.base_graph.nodes[j]['label']
 
 				if not load_from_memory:
-					src_uid = self.base_graph.nodes[i]['user_id']
-					dst_uid = self.base_graph.nodes[j]['user_id']
+					src_uid = uid[i]
+					dst_uid = uid[j]
 					src_nid = -1 if src_uid not in uid_to_nid.keys() else uid_to_nid[src_uid]
 					dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
 
@@ -367,7 +369,8 @@ class GraphData:
 					dst_follows_src[i, j] = edge_rev
 					shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
 					# common_neighbors[i, j] = cn
-					jaccard_coeff[i, j] = cn / (out_degree[i] + out_degree[j] - cn)
+					size_union = out_degree[i] + out_degree[j] - cn
+					jaccard_coeff[i, j] = 0 if size_union == 0 else cn / size_union
 
 		self.features['src_num_tweets'] = src_num_tweets
 		self.features['dst_num_tweets'] = dst_num_tweets
