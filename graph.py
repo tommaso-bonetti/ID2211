@@ -302,13 +302,16 @@ class GraphData:
 			src_follows_dst = load_feature('src_follows_dst', self.rumor_number)
 			dst_follows_src = load_feature('dst_follows_src', self.rumor_number)
 			shortest_path_dir = load_feature('shortest_path_dir', self.rumor_number)
-			common_neighbors = load_feature('common_neighbors', self.rumor_number)
+			jaccard_coeff = load_feature('jaccard_coeff', self.rumor_number)
+			out_degree = None
 		else:
 			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
 			src_follows_dst = dok_array((n, n), dtype=np.int32)
 			dst_follows_src = dok_array((n, n), dtype=np.int32)
 			shortest_path_dir = dok_array((n, n), dtype=np.int32)
-			common_neighbors = dok_array((n, n), dtype=np.int32)
+			jaccard_coeff = dok_array((n, n), dtype=np.float64)
+			out_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeOutDegV()}
+			out_degree = [out_degree_vec[uid_to_nid[self.base_graph.nodes[i]['user_id']]] for i in range(n)]
 
 		src_num_tweets = dok_array((n, n), dtype=np.int32)
 		dst_num_tweets = dok_array((n, n), dtype=np.int32)
@@ -316,10 +319,8 @@ class GraphData:
 		dst_num_followers = dok_array((n, n), dtype=np.int32)
 		src_num_following = dok_array((n, n), dtype=np.int32)
 		dst_num_following = dok_array((n, n), dtype=np.int32)
-		src_timestamp = dok_array((n, n), dtype=np.int32)
-		dst_timestamp = dok_array((n, n), dtype=np.int32)
-		timestamp_diff = dok_array((n, n), dtype=np.int32)
 		src_dst_same = dok_array((n, n), dtype=np.int32)
+		timestamp_diff = dok_array((n, n), dtype=np.int32)
 
 		# rows, cols = self.adj_matrix.nonzero()
 		# for i in np.unique(rows):
@@ -334,12 +335,14 @@ class GraphData:
 				dst_num_followers[i, j] = self.base_graph.nodes[j]['num_followers']
 				src_num_following[i, j] = self.base_graph.nodes[i]['num_following']
 				dst_num_following[i, j] = self.base_graph.nodes[j]['num_following']
-				src_timestamp[i, j] = self.base_graph.nodes[i]['rel_timestamp']
-				dst_timestamp[i, j] = self.base_graph.nodes[j]['rel_timestamp']
+
 				src_uid = self.base_graph.nodes[i]['user_id']
 				dst_uid = self.base_graph.nodes[j]['user_id']
 				src_dst_same[i, j] = int(src_uid == dst_uid)
-				timestamp_diff[i, j] = src_timestamp[i, j] - dst_timestamp[i, j]
+
+				src_timestamp = self.base_graph.nodes[i]['rel_timestamp']
+				dst_timestamp = self.base_graph.nodes[j]['rel_timestamp']
+				timestamp_diff[i, j] = src_timestamp - dst_timestamp
 
 				self.src_label[i, j] = self.base_graph.nodes[i]['label']
 				self.dst_label[i, j] = self.base_graph.nodes[j]['label']
@@ -363,28 +366,27 @@ class GraphData:
 					src_follows_dst[i, j] = edge
 					dst_follows_src[i, j] = edge_rev
 					shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
-					common_neighbors[i, j] = cn
+					# common_neighbors[i, j] = cn
+					jaccard_coeff[i, j] = cn / (out_degree[i] + out_degree[j] - cn)
 
 		self.features['src_num_tweets'] = src_num_tweets
 		self.features['dst_num_tweets'] = dst_num_tweets
 		self.features['src_num_followers'] = src_num_followers
 		self.features['dst_num_followers'] = dst_num_followers
 		self.features['src_num_following'] = src_num_following
-		self.features['dst_num_following'] = dst_num_following
-		self.features['src_timestamp'] = src_timestamp
-		self.features['dst_timestamp'] = dst_timestamp
-		self.features['timestamp_diff'] = timestamp_diff
+		self.features['dst_num_following'] = dst_num_followingù
 		self.features['src_dst_same'] = src_dst_same
+		self.features['timestamp_diff'] = timestamp_diff
 		self.features['src_follows_dst'] = src_follows_dst
 		self.features['dst_follows_src'] = dst_follows_src
 		self.features['shortest_path_dir'] = shortest_path_dir
-		self.features['common_neighbors'] = common_neighbors
+		self.features['jaccard_coeff'] = jaccard_coeff
 
 		if not load_from_memory:
 			save_feature(src_follows_dst, 'src_follows_dst', self.rumor_number)
 			save_feature(dst_follows_src, 'dst_follows_src', self.rumor_number)
 			save_feature(shortest_path_dir, 'shortest_path_dir', self.rumor_number)
-			save_feature(common_neighbors, 'common_neighbors', self.rumor_number)
+			save_feature(jaccard_coeff, 'jaccard_coeff', self.rumor_number)
 
 		print('Fetching complete')
 

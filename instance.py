@@ -212,7 +212,7 @@ class Instances:
 
 	def __init__(self, rumor_number: int, timestamps: list[int] = None, sizes: list[int] = None):
 		self.graph = GraphData(rumor_number)
-		self.graph.fetch_static_features(True)
+		self.graph.fetch_static_features(load_from_memory=True)
 		self.instances = []
 
 		if timestamps is not None:
@@ -282,6 +282,26 @@ class Instances:
 
 		cost = np.sum(w ** 2) + np.sum(costs)
 		return cost
+
+	def compute_grad(self, strength_fun: StrengthFunction, w: ndarray, cost_fun: CostFunction, alpha: float) -> ndarray:
+		gradients = np.zeros((self.n, w.size))
+
+		for i, instance in enumerate(self.instances):
+			_, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
+			gradients[i, :] = temp_g
+
+		gradient = 2 * w + np.sum(gradients, axis=0)
+		return gradient
+
+	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float):
+		links = []
+		predictions = []
+		for instance in self.instances:
+			scores = instance.compute_page_rank(strength_fun, w, alpha)
+			predictions.append(np.argmax(scores))
+			links.append(instance.positive_link)
+
+		return links, predictions
 
 	def num_features(self):
 		return self.instances[0].graph.num_features()
