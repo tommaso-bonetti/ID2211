@@ -377,7 +377,7 @@ class GraphData:
 		self.features['src_num_followers'] = src_num_followers
 		self.features['dst_num_followers'] = dst_num_followers
 		self.features['src_num_following'] = src_num_following
-		self.features['dst_num_following'] = dst_num_followingù
+		self.features['dst_num_following'] = dst_num_following
 		self.features['src_dst_same'] = src_dst_same
 		self.features['timestamp_diff'] = timestamp_diff
 		self.features['src_follows_dst'] = src_follows_dst
