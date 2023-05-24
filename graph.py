@@ -281,8 +281,8 @@ class GraphData:
 		self.dst_label = np.zeros((n, n), dtype=np.dtype('U1'))
 
 		keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
-						'dst_num_following', 'src_timestamp', 'dst_timestamp', 'timestamp_diff', 'src_dst_same',
-						'src_follows_dst', 'dst_follows_src', 'shortest_path_dir', 'common_neighbors']
+						'dst_num_following', 'timestamp_diff', 'src_dst_same', 'src_follows_dst', 'dst_follows_src',
+						'shortest_path_dir', 'jaccard_coeff']
 		self.features = {k: None for k in keys}
 
 	def fetch_static_features(self, load_from_memory: bool = False):
