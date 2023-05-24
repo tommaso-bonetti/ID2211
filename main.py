@@ -43,7 +43,7 @@ def main():
 	f_training.close()
 
 	f_test = open("datafile_"+current_time+"_test_indices.txt", "a")
-	f_test.write(json.dumps(f_test))
+	f_test.write(json.dumps(test_indices))
 	f_test.close()
 
 	true, pred = instances.predict(strength, learned_w, alpha)
