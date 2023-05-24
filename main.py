@@ -10,6 +10,12 @@ def load_user_graph(rumor_number):
 	g.fetch_static_features(load_from_memory=False)
 
 def main():
+
+	print("Starting code")
+
+	rumor_number = 2
+	load_user_graph(rumor_number)
+	"""
 	rumor_number = 1
 	strength = StrengthFunction(fun_type=3)
 	cost = CostFunction(fun_type=3)
@@ -27,6 +33,7 @@ def main():
 	print(f'True links: {true}')
 	print(f'Predicted links: {pred}')
 	print(f'Accuracy: {np.count_nonzero(pred[pred == true]) / np.size(true)}')
+	"""
 
 if __name__ == '__main__':
 	main()
