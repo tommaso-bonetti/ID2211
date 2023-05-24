@@ -197,7 +197,8 @@ class Instance:
 		res *= 1 - alpha
 		# Add the restart probability
 		res_prob = np.zeros((n, n))
-		res_prob[:, src_idx] += alpha
+		indicator = np.array([1 if s == 0 else alpha for s in row_sums])
+		res_prob[:, src_idx] += indicator
 		res += csr_array(res_prob)
 
 		return res
