@@ -285,6 +285,9 @@ class GraphData:
 						'shortest_path_dir', 'jaccard_coeff']
 		self.features = {k: None for k in keys}
 
+	def get_size(self) -> int:
+		return self.base_graph.number_of_nodes()
+
 	def fetch_static_features(self, load_from_memory: bool = False):
 		"""
 		Fetches the user graph-related features of the overall tweet graph. After this method executes, these features

@@ -1,4 +1,5 @@
 from time import time
+import random
 
 import numpy as np
 from numpy import ndarray
@@ -207,37 +208,62 @@ class Instances:
 	# Instances represents a set of source/positive/negative groups with the respective graphs, which can be used as a
 	# training or test dataset for link prediction.
 
-	graph: GraphData = None
 	instances: list[Instance] = None
-	n: int = None
+	test_instances: list[Instance] = None
+	n_train: int = None
+	n_test: int = None
+	train_idx: dict[int: list[int]] = None
+	test_idx: dict[int: list[int]] = None
 
-	def __init__(self, rumor_number: int, timestamps: list[int] = None, sizes: list[int] = None):
-		self.graph = GraphData(rumor_number)
-		self.graph.fetch_static_features(load_from_memory=True)
+	def __init__(self, train_rumors: list[int], test_rumors: list[int], train_split: float):
+		if not 0 < train_split < 1:
+			raise ValueError('Training split must be between 0 and 1')
+
 		self.instances = []
+		self.test_instances = []
+		self.train_idx = {}
+		self.test_idx = {}
 
-		if timestamps is not None:
-			for t in timestamps:
-				snapshot = self.graph.get_snapshot(time_offset=t)
-				self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
-		elif sizes is not None:
-			dim = len(sizes)
-			for i, s in enumerate(sizes):
-				print(f'Loading snapshot {i+1}/{dim}...')
-				snapshot = self.graph.get_snapshot(num_nodes=s)
-				self.instances.append(Instance(s - 1, snapshot))
-			snapshot = self.graph.get_snapshot()
-			self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
-		else:
-			snapshot = self.graph.get_snapshot()
-			self.instances.append(Instance(snapshot.get_size() - 1, snapshot))
+		graph = {}
+
+		for r in train_rumors:
+			graph[r] = GraphData(r)
+			graph[r].fetch_static_features(load_from_memory=True)
+
+			tweets = graph[r].get_size()
+			train_size = int(train_split * (tweets - 1))
+			idx = list(range(1, tweets))
+			random.shuffle(idx)
+			self.train_idx[r] = idx[:train_size]
+			self.test_idx[r] = idx[train_size:]
+
+			print(f'Loading training set from graph {r}...')
+			for i, size in enumerate(self.train_idx[r]):
+				snapshot = graph[r].get_snapshot(num_nodes=size)
+				self.instances.append(Instance(size - 1, snapshot))
+
+		for r in test_rumors:
+			if r not in train_rumors:
+				graph[r] = GraphData(r)
+				graph[r].fetch_static_features(load_from_memory=True)
+
+				tweets = graph[r].get_size()
+				train_size = int(train_split * (tweets - 1))
+				idx = list(range(1, tweets))
+				random.shuffle(idx)
+				self.test_idx[r] = idx[train_size:]
+
+			print(f'Loading test set from graph {r}...')
+			for i, size in enumerate(self.test_idx[r]):
+				snapshot = graph[r].get_snapshot(num_nodes=size)
+				self.test_instances.append(Instance(size - 1, snapshot))
 
 		print('Snapshots loaded')
-
-		self.n = len(self.instances)
+		self.n_train = len(self.instances)
+		self.n_test = len(self.test_instances)
 
 	def num_instances(self):
-		return self.n
+		return self.n_train
 
 	def compute_cost_and_grad(self, strength_fun: StrengthFunction, w: ndarray, cost_fun: CostFunction, alpha: float) \
 				-> tuple[float, ndarray]:
@@ -252,8 +278,8 @@ class Instances:
 		:return: the cumulative cost (float) and the cumulative gradient (a float for each feature).
 		"""
 
-		costs = np.zeros(self.n)
-		gradients = np.zeros((self.n, w.size))
+		costs = np.zeros(self.n_train)
+		gradients = np.zeros((self.n_train, w.size))
 
 		for i, instance in enumerate(self.instances):
 			temp_c, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
@@ -276,7 +302,7 @@ class Instances:
 		:return: the cumulative cost (float).
 		"""
 
-		costs = np.zeros(self.n)
+		costs = np.zeros(self.n_train)
 		for i, instance in enumerate(self.instances):
 			temp_c = instance.compute_cost(strength_fun, w, cost_fun, alpha)
 			costs[i] = temp_c
@@ -285,7 +311,7 @@ class Instances:
 		return cost
 
 	def compute_grad(self, strength_fun: StrengthFunction, w: ndarray, cost_fun: CostFunction, alpha: float) -> ndarray:
-		gradients = np.zeros((self.n, w.size))
+		gradients = np.zeros((self.n_train, w.size))
 
 		for i, instance in enumerate(self.instances):
 			_, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
@@ -297,7 +323,7 @@ class Instances:
 	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float):
 		links = []
 		predictions = []
-		for instance in self.instances:
+		for instance in self.test_instances:
 			scores = instance.compute_page_rank(strength_fun, w, alpha)
 			predictions.append(np.argmax(scores))
 			links.append(instance.positive_link)
