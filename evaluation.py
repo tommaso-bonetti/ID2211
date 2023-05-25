@@ -9,7 +9,7 @@ w = np.array([
 ])
 alpha = .2
 
-test_instances = Instances(train_rumors=[], test_rumors=[2], train_split=.8)
+test_instances = Instances(train_rumors=[], test_rumors=[3], train_split=.8)
 true, pred, _, accuracy = test_instances.predict(strength, w, alpha, k=10)
 print(f'True links: {true}')
 print(f'Predicted links: {pred}')

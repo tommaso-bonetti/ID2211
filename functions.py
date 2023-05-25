@@ -33,8 +33,8 @@ class StrengthFunction:
 			res.data = np.maximum(0, 2 * res.data)
 
 		elif self.type == 3:
-			# TODO add a fix for when exp in the denominator overflows (invalid value encountered in divide)
-			res.data = np.exp(-res.data) / ((1 + np.exp(-res.data)) ** 2)
+			exp = np.nan_to_num(np.exp(-res.data))
+			res.data = exp / ((1 + exp) ** 2)
 
 		return psi * res
 
