@@ -8,6 +8,8 @@ import snap
 from graph import GraphWrapper
 from rand import random_add_nodes
 from pref import pref_add_nodes
+import random as rng
+import math
 
 #takes graph and a batchsize
 #predicts edges to new batchsized blocks 
@@ -242,8 +244,7 @@ def draw_user_network(network: nx.DiGraph):
 	plt.show()
 
 #temp function
-def getGraph():
-    rumor_number = 1
+def getGraph(rumor_number):
 
     path_input = f'./in/FN{rumor_number}_DD.xlsx'
     tweet_data = openpyxl.load_workbook(path_input)['Sheet1']
@@ -447,16 +448,133 @@ def getGraph():
     theGraph = GraphWrapper(tweet_net_nx, label_dict)
     return(theGraph)
 
+def newRand(nr):
+    minlen = 10
+    if nr < minlen:
+        minlen = nr
+    return rng.sample(range(0, nr+1), minlen)
+
+def newPref(graph):
+    nodeslen = len(graph)
+    #special case for 0
+
+    weights = np.array(range(nodeslen))
+    incomming = np.sum(graph, axis=0)
+    for i in range(nodeslen):
+        while incomming[i] > 0:
+            np.append(weights,i)
+            incomming[i] = incomming[i] - 1
+    weights = np.append(weights,nodeslen)
+
+    minlen = 10
+    if nodeslen < minlen:
+         minlen = nodeslen +1 #to account ofr self edge
+
+    result = []
+    while len(result) != minlen:
+        connection = np.random.choice(weights, 1)[0]
+        if connection not in result:
+            result.append(connection)
+    return result
+
+def findmax(array):
+    highest = 0
+    pos = 0
+    for i in range(len(array)):
+          if array[i] > highest:
+               pos = i 
+               highest = array[i]
+    return pos
  
 def main():
+     
+    """
+    graph = getGraph(1)
+    adjacency = np.flip(graph.get_adj_matrix())
+    print("testing")
+    print(np.max(np.sum(adjacency, axis=0))) DENNA
+    print(np.max(np.sum(adjacency, axis=1)))
+
+def temp():
+"""
+    #select data to test
+    datanum = 5
     
     #read graf data
-    graph = getGraph()
-
-    #read model
+    graph = getGraph(datanum)
     adjacency = np.flip(graph.get_adj_matrix())
 
+    """
+    adjacency = [
+         [0,0,0,0,0,0,0,0,0,0],[1,0,0,0,0,0,0,0,0,0],
+         [1,0,0,0,0,1,0,0,0,0],[0,1,0,0,0,0,0,0,0,0],
+         [0,0,1,0,0,0,0,1,0,0],[1,0,0,0,0,0,0,0,0,0],
+         [0,0,0,0,1,0,0,0,0,0],[0,0,0,0,1,0,0,0,0,0],
+         [0,0,0,0,0,0,0,0,0,0],[1,0,0,0,0,0,0,0,0,0],
+    ]
+    """
+    
+
+    #find number of nodes
+    nrnodes = math.floor(len(adjacency))
+    toTest = math.floor(nrnodes/5)-1 #for 20%
+
+    #[3,2,5]#
+    nodeSample = rng.sample(range(nrnodes), toTest)
+
+    correctRand = [[0]*10]*toTest
+    correctPref = [[0]*10]*toTest
+
+    for test in range(toTest):
+        testNode = nodeSample[test]
+
+        if testNode == 0:
+            for i in range(10):
+                correctRand[test][i] = 1
+                correctPref[test][i] = 1
+        else:   
+            randResults = newRand(testNode)
+            tempadj=adjacency[:testNode]
+            prefResult = newPref(tempadj)
+
+            correct = 12 #temp
+            if(max(adjacency[testNode])<1):
+                correct = testNode
+            else:
+                #print(adjacency[testNode])
+                correct = findmax(adjacency[testNode])
+
+            found = 0
+            for i in range(10): #TODO
+                if i<(len(randResults)):
+                    if randResults[i] == correct:
+                        found = 1
+                        #print("rand found!")
+                correctRand[test][i] += found
+            for i in range(len(prefResult)):                
+                    if prefResult[i] == correct:
+                        #print(adjacency[correct][test])
+                        #print("pref found!")
+                        #print(adjacency[testNode][correct])
+                        for j in range(i,10):
+                            correctPref[test][j] += 1
+                            
+                            #print(j)
+                
+
+    print(toTest)
+    print(np.sum(correctRand, axis=0))
+    print(np.sum(correctPref, axis=0))
+    #print(correctPref)
+    
+    """
+    #Xbatch = np.array([Xin[i] for i in batchpic]) #X[datapointer:datapointer+n_batch, :]
     #run prediction 
+    top10sumRand = [0]*10
+    top10sumPref = [0]*10
+    for i in range(toTest):
+         
+
     batch = 20
     X = 100
     prefSum = [0]* round((len(adjacency)-1)/batch)
@@ -480,6 +598,7 @@ def main():
         print("(",i-1, ",", randSum[i],")")
     
     #print("test")
+    """
 
 
 if __name__ == '__main__':
