@@ -13,7 +13,7 @@ def load_user_graph(rumor_number):
 
 def main():
 	strength = StrengthFunction(fun_type=3)
-	cost = CostFunction(fun_type=3)
+	cost = CostFunction(fun_type=1)
 	alpha = .2
 
 	# Both train_rumors and test_rumors need to be lists where the rumor number(s) are specified. The train_split is
@@ -45,6 +45,9 @@ def main():
 	f_test = open("datafile_"+current_time+"_test_indices.txt", "a")
 	f_test.write(json.dumps(test_indices))
 	f_test.close()
+
+	print(f'Train: {training_indices}')
+	print(f'Test: {test_indices}')
 
 	true, pred = instances.predict(strength, learned_w, alpha)
 	true, pred = np.array(true), np.array(pred)

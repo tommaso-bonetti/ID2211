@@ -139,8 +139,8 @@ class Instance:
 		Q_T = Q.transpose()
 
 		# Compute the	actual PageRank	using	the transition probability matrix
-		page_rank_curr = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
-		page_rank_prev = np.ones((self.graph.get_size(), 1)) / self.graph.get_size()
+		page_rank_curr = np.ones(self.graph.get_size()) / self.graph.get_size()
+		page_rank_prev = np.ones(self.graph.get_size()) / self.graph.get_size()
 
 		conv = False
 		i = 0
@@ -238,7 +238,9 @@ class Instances:
 			self.test_idx[r] = idx[train_size:]
 
 			print(f'Loading training set from graph {r}...')
+			dim = len(self.train_idx[r])
 			for i, size in enumerate(self.train_idx[r]):
+				print(f'\tLoading snapshot {i+1}/{dim}...')
 				snapshot = graph[r].get_snapshot(num_nodes=size)
 				self.instances.append(Instance(size - 1, snapshot))
 
@@ -254,7 +256,9 @@ class Instances:
 				self.test_idx[r] = idx[train_size:]
 
 			print(f'Loading test set from graph {r}...')
+			dim = len(self.test_idx[r])
 			for i, size in enumerate(self.test_idx[r]):
+				print(f'\tLoading snapshot {i+1}/{dim}...')
 				snapshot = graph[r].get_snapshot(num_nodes=size)
 				self.test_instances.append(Instance(size - 1, snapshot))
 
@@ -320,15 +324,26 @@ class Instances:
 		gradient = 2 * w + np.sum(gradients, axis=0)
 		return gradient
 
-	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float):
-		links = []
-		predictions = []
-		for instance in self.test_instances:
-			scores = instance.compute_page_rank(strength_fun, w, alpha)
-			predictions.append(np.argmax(scores))
-			links.append(instance.positive_link)
+	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float, k: int):
+		links = {}
+		predictions = {}
+		top_k_correct = {}
 
-		return links, predictions
+		for instance in self.test_instances:
+			src = instance.source_node_index
+			scores = instance.compute_page_rank(strength_fun, w, alpha)
+			scores_idx = np.argsort(scores)[::-1]
+
+			links[src] = instance.positive_link
+			predictions[src] = {idx: scores[idx] for idx in scores_idx[:k]}
+			top_k_correct[src] = [links[src] in scores_idx[:size + 1] for size in range(k)]
+
+		accuracy = []
+		for size in range(k):
+			vals = [l[size] for l in top_k_correct.values()]
+			accuracy.append(sum(vals) / len(vals))
+
+		return links, predictions, top_k_correct, accuracy
 
 	def num_features(self):
 		return self.instances[0].graph.num_features()
