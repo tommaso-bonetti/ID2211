@@ -498,7 +498,7 @@ def main():
 def temp():
 """
     #select data to test
-    datanum = 5
+    datanum = 2
     
     #read graf data
     graph = getGraph(datanum)
@@ -522,16 +522,17 @@ def temp():
     #[3,2,5]#
     nodeSample = rng.sample(range(nrnodes), toTest)
 
-    correctRand = [[0]*10]*toTest
-    correctPref = [[0]*10]*toTest
+    correctRand = [[0]*10]
+    correctPref = [[0]*10]
 
     for test in range(toTest):
         testNode = nodeSample[test]
+        print(testNode)
 
         if testNode == 0:
             for i in range(10):
-                correctRand[test][i] = 1
-                correctPref[test][i] = 1
+                correctRand[i] = 1
+                correctPref[i] = 1
         else:   
             randResults = newRand(testNode)
             tempadj=adjacency[:testNode]
@@ -544,27 +545,29 @@ def temp():
                 #print(adjacency[testNode])
                 correct = findmax(adjacency[testNode])
 
-            found = 0
+            finded = 0
             for i in range(10): #TODO
                 if i<(len(randResults)):
                     if randResults[i] == correct:
-                        found = 1
+                        finded = 1
                         #print("rand found!")
-                correctRand[test][i] += found
+                correctRand[i] += finded
             for i in range(len(prefResult)):                
                     if prefResult[i] == correct:
                         #print(adjacency[correct][test])
                         #print("pref found!")
                         #print(adjacency[testNode][correct])
                         for j in range(i,10):
-                            correctPref[test][j] += 1
+                            correctPref[j] += 1
                             
                             #print(j)
                 
 
     print(toTest)
-    print(np.sum(correctRand, axis=0))
-    print(np.sum(correctPref, axis=0))
+    #print(np.sum(correctRand, axis=0))
+    print(correctRand)
+    #print(np.sum(correctPref, axis=0))
+    print(correctPref)
     #print(correctPref)
     
     """
