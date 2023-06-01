@@ -263,6 +263,7 @@ class GraphData:
 	user_ids: list[str] = None
 	src_label: ndarray = None
 	dst_label: ndarray = None
+	h: float = None
 
 	def __init__(self, rumor_number: int):
 		"""
@@ -280,6 +281,8 @@ class GraphData:
 		self.src_label = np.zeros((n, n), dtype=np.dtype('U1'))
 		self.dst_label = np.zeros((n, n), dtype=np.dtype('U1'))
 
+		self.h = 1e4
+
 		keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
 						'dst_num_following', 'timestamp_diff', 'src_dst_same', 'src_follows_dst', 'dst_follows_src',
 						'shortest_path_dir', 'jaccard_coeff']
@@ -287,6 +290,10 @@ class GraphData:
 
 	def get_size(self) -> int:
 		return self.base_graph.number_of_nodes()
+
+	def normalize_time_offset(self, x: float) -> float:
+		tmp = 1 + np.exp(x / self.h)
+		return 2 * np.reciprocal(tmp)
 
 	def fetch_static_features(self, load_from_memory: bool = False):
 		"""
@@ -308,6 +315,7 @@ class GraphData:
 			dst_follows_src = load_feature('dst_follows_src', self.rumor_number)
 			shortest_path_dir = load_feature('shortest_path_dir', self.rumor_number)
 			jaccard_coeff = load_feature('jaccard_coeff', self.rumor_number)
+			in_degree = None
 			out_degree = None
 		else:
 			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
@@ -315,6 +323,8 @@ class GraphData:
 			dst_follows_src = dok_array((n, n), dtype=np.int32)
 			shortest_path_dir = dok_array((n, n), dtype=np.int32)
 			jaccard_coeff = dok_array((n, n), dtype=np.float64)
+			in_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeInDegV()}
+			in_degree = [in_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
 			out_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeOutDegV()}
 			out_degree = [out_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
 
@@ -347,7 +357,8 @@ class GraphData:
 
 				src_timestamp = self.base_graph.nodes[i]['rel_timestamp']
 				dst_timestamp = self.base_graph.nodes[j]['rel_timestamp']
-				timestamp_diff[i, j] = src_timestamp - dst_timestamp
+				# timestamp_diff[i, j] = src_timestamp - dst_timestamp  # OLD VERSION
+				timestamp_diff[i, j] = self.normalize_time_offset(src_timestamp - dst_timestamp)  # NEW VERSION
 
 				self.src_label[i, j] = self.base_graph.nodes[i]['label']
 				self.dst_label[i, j] = self.base_graph.nodes[j]['label']
@@ -372,7 +383,7 @@ class GraphData:
 					dst_follows_src[i, j] = edge_rev
 					shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
 					# common_neighbors[i, j] = cn
-					size_union = out_degree[i] + out_degree[j] - cn
+					size_union = in_degree[i] + in_degree[j] + out_degree[i] + out_degree[j] - cn
 					jaccard_coeff[i, j] = 0 if size_union == 0 else cn / size_union
 
 		self.features['src_num_tweets'] = src_num_tweets
@@ -425,36 +436,15 @@ class GraphData:
 
 		return res, src, dst
 
-	def get_snapshot(self, time_offset: int = -1, num_nodes: int = -1) -> GraphWrapper:
-		"""
-		Computes a subgraph of the overall tweet graph capturing a snapshot of the tweets at a specific instant or after
-		a specific number of tweets have been posted. If no parameter is passed, the snapshot will coincide with the
-		overall graph.
+	def get_snapshot(self, start_node: int = 0, end_node: int = -1, end_train: int = -1) -> GraphWrapper:
+		node_list = list(range(start_node, 1 + (end_node if end_node > 0 else self.get_size())))
+		res_graph = nx.DiGraph(self.base_graph.subgraph(node_list))
 
-		:param time_offset: the length of the time interval between the first tweet and the last tweet that will be
-			included in the snapshot, expressed in seconds.
-		:param num_nodes: the number of tweets to include in the snapshot. If time_offset is a non-negative integer,
-			this parameter is ignored.
-		:return: the specified snapshot of the overall tweet graph.
-		"""
-
-		if time_offset >= 0:
-			node_list = []
-			for node, data in self.base_graph.nodes.data():
-				if data['rel_timestamp'] <= time_offset:
-					node_list.append(node)
-			res_graph = self.base_graph.subgraph(node_list)
-
-		elif num_nodes > 0:
-			node_list = []
-			for node in self.base_graph:
-				node_list.append(node)
-				if len(node_list) >= num_nodes:
-					break
-			res_graph = self.base_graph.subgraph(node_list)
-
-		else:
-			res_graph = self.base_graph
+		# If the graph is part of the test set, remove the edges formed by test nodes
+		if end_train > 0:
+			test_nodes = list(range(end_train + 1, end_node))
+			test_edges = [e for e in res_graph.edges if e[0] in test_nodes]
+			res_graph.remove_edges_from(test_edges)
 
 		# Add links to all nodes from the source and make the graph undirected
 		mod_graph = nx.DiGraph(nx.DiGraph(res_graph).to_undirected())

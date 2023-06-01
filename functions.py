@@ -44,10 +44,11 @@ class CostFunction:
 		Constructs a cost function.
 		:param fun_type: 1 for step loss, 2 for squared hinge loss, 3 for step + squared hinge.
 		"""
-		self.b = 1e-3
+		self.b = 1e-6
 		self.type = fun_type
 
 	def compute_cost(self, x):
+		# TODO: deactivate overflow warnings where expected
 		step = np.reciprocal(1 + np.exp(-x / self.b))
 		sq_hinge = np.maximum(0, x) ** 2
 

@@ -209,20 +209,15 @@ class Instances:
 	# training or test dataset for link prediction.
 
 	instances: list[Instance] = None
-	test_instances: list[Instance] = None
-	n_train: int = None
-	n_test: int = None
-	train_idx: dict[int: list[int]] = None
-	test_idx: dict[int: list[int]] = None
+	n: int = None
+	train_size: dict[int: int] = None
 
-	def __init__(self, train_rumors: list[int], test_rumors: list[int], train_split: float):
+	def __init__(self, train_rumors: list[int], train_split: float):
 		if not 0 < train_split < 1:
 			raise ValueError('Training split must be between 0 and 1')
 
 		self.instances = []
-		self.test_instances = []
-		self.train_idx = {}
-		self.test_idx = {}
+		self.train_size = {}
 
 		graph = {}
 
@@ -232,42 +227,20 @@ class Instances:
 
 			tweets = graph[r].get_size()
 			train_size = int(train_split * (tweets - 1))
-			idx = list(range(1, tweets))
-			random.shuffle(idx)
-			self.train_idx[r] = idx[:train_size]
-			self.test_idx[r] = idx[train_size:]
+			idx = list(range(1, train_size + 1))
+			self.train_size[r] = train_size
 
 			print(f'Loading training set from graph {r}...')
-			dim = len(self.train_idx[r])
-			for i, size in enumerate(self.train_idx[r]):
-				print(f'\tLoading snapshot {i+1}/{dim}...')
-				snapshot = graph[r].get_snapshot(num_nodes=size)
-				self.instances.append(Instance(size - 1, snapshot))
-
-		for r in test_rumors:
-			if r not in train_rumors:
-				graph[r] = GraphData(r)
-				graph[r].fetch_static_features(load_from_memory=True)
-
-				tweets = graph[r].get_size()
-				train_size = int(train_split * (tweets - 1))
-				idx = list(range(1, tweets))
-				random.shuffle(idx)
-				self.test_idx[r] = idx[train_size:]
-
-			print(f'Loading test set from graph {r}...')
-			dim = len(self.test_idx[r])
-			for i, size in enumerate(self.test_idx[r]):
-				print(f'\tLoading snapshot {i+1}/{dim}...')
-				snapshot = graph[r].get_snapshot(num_nodes=size)
-				self.test_instances.append(Instance(size - 1, snapshot))
+			for i, source in enumerate(idx):
+				print(f'\tLoading snapshot {i+1}/{train_size}...')
+				snapshot = graph[r].get_snapshot(end_node=source)
+				self.instances.append(Instance(source, snapshot))
 
 		print('Snapshots loaded')
-		self.n_train = len(self.instances)
-		self.n_test = len(self.test_instances)
+		self.n = len(self.instances)
 
 	def num_instances(self):
-		return self.n_train
+		return self.n
 
 	def compute_cost_and_grad(self, strength_fun: StrengthFunction, w: ndarray, cost_fun: CostFunction, alpha: float) \
 				-> tuple[float, ndarray]:
@@ -282,8 +255,8 @@ class Instances:
 		:return: the cumulative cost (float) and the cumulative gradient (a float for each feature).
 		"""
 
-		costs = np.zeros(self.n_train)
-		gradients = np.zeros((self.n_train, w.size))
+		costs = np.zeros(self.n)
+		gradients = np.zeros((self.n, w.size))
 
 		for i, instance in enumerate(self.instances):
 			temp_c, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
@@ -306,7 +279,7 @@ class Instances:
 		:return: the cumulative cost (float).
 		"""
 
-		costs = np.zeros(self.n_train)
+		costs = np.zeros(self.n)
 		for i, instance in enumerate(self.instances):
 			temp_c = instance.compute_cost(strength_fun, w, cost_fun, alpha)
 			costs[i] = temp_c
@@ -315,7 +288,7 @@ class Instances:
 		return cost
 
 	def compute_grad(self, strength_fun: StrengthFunction, w: ndarray, cost_fun: CostFunction, alpha: float) -> ndarray:
-		gradients = np.zeros((self.n_train, w.size))
+		gradients = np.zeros((self.n, w.size))
 
 		for i, instance in enumerate(self.instances):
 			_, temp_g = instance.compute_cost_and_grad(strength_fun, w, cost_fun, alpha)
@@ -323,6 +296,37 @@ class Instances:
 
 		gradient = 2 * w + np.sum(gradients, axis=0)
 		return gradient
+
+	def num_features(self):
+		return self.instances[0].graph.num_features()
+
+class TestInstances:
+	instances: list[Instance] = None
+
+	def __init__(self, test_rumors: list[int], split: tuple[float, float, float], is_valid: bool):
+		if split[0] + split[1] + split[2] != 1:
+			raise ValueError('Splits must sum up to 1')
+
+		self.instances = []
+
+		for r in test_rumors:
+			graph = GraphData(r)
+			graph.fetch_static_features(load_from_memory=True)
+
+			tweets = graph.get_size()
+			train_split = split[0] + int(not is_valid) * split[1]
+			train_size = int(train_split * (tweets - 1))
+			test_split = split[1] if is_valid else split[2]
+			test_size = int(test_split * (tweets - 1))
+			idx = list(range(train_size + 1, train_size + test_size + 1))
+
+			print(f'Loading {"validation" if is_valid else "test"} set from graph {r}...')
+			for i, source in enumerate(idx):
+				print(f'\tLoading snapshot {i + 1}/{test_size}...')
+				snapshot = graph.get_snapshot(end_node=source, end_train=train_size)
+				self.instances.append(Instance(source, snapshot))
+
+		print('Snapshots loaded')
 
 	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float, k: int):
 		links = {}
@@ -344,6 +348,3 @@ class Instances:
 			accuracy.append(sum(vals) / len(vals))
 
 		return links, predictions, top_k_correct, accuracy
-
-	def num_features(self):
-		return self.instances[0].graph.num_features()
