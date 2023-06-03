@@ -283,9 +283,12 @@ class GraphData:
 
 		self.h = 1e4
 
-		keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
-						'dst_num_following', 'timestamp_diff', 'src_dst_same', 'src_follows_dst', 'dst_follows_src',
-						'shortest_path_dir', 'jaccard_coeff']
+		# keys = ['src_num_tweets', 'dst_num_tweets', 'src_num_followers', 'dst_num_followers', 'src_num_following',
+		# 				'dst_num_following', 'timestamp_diff', 'src_dst_same', 'src_follows_dst', 'dst_follows_src',
+		# 				'shortest_path_dir', 'jaccard_coeff']
+		keys = [
+			'dst_tweets', 'src_followers', 'dst_followers', 'timestamp_diff', 'src_dst_same', 'shortest_path', 'jaccard'
+		]
 		self.features = {k: None for k in keys}
 
 	def get_size(self) -> int:
@@ -311,29 +314,29 @@ class GraphData:
 
 		if load_from_memory:
 			user_graph, uid_to_nid = None, None
-			src_follows_dst = load_feature('src_follows_dst', self.rumor_number)
-			dst_follows_src = load_feature('dst_follows_src', self.rumor_number)
-			shortest_path_dir = load_feature('shortest_path_dir', self.rumor_number)
-			jaccard_coeff = load_feature('jaccard_coeff', self.rumor_number)
+			# src_follows_dst = load_feature('src_follows_dst', self.rumor_number)
+			# dst_follows_src = load_feature('dst_follows_src', self.rumor_number)
+			shortest_path = load_feature('shortest_path', self.rumor_number)
+			jaccard = load_feature('jaccard', self.rumor_number)
 			in_degree = None
 			out_degree = None
 		else:
 			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
-			src_follows_dst = dok_array((n, n), dtype=np.int32)
-			dst_follows_src = dok_array((n, n), dtype=np.int32)
-			shortest_path_dir = dok_array((n, n), dtype=np.int32)
-			jaccard_coeff = dok_array((n, n), dtype=np.float64)
+			# src_follows_dst = dok_array((n, n), dtype=np.int32)
+			# dst_follows_src = dok_array((n, n), dtype=np.int32)
+			shortest_path = dok_array((n, n), dtype=np.int32)
+			jaccard = dok_array((n, n), dtype=np.float64)
 			in_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeInDegV()}
 			in_degree = [in_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
 			out_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeOutDegV()}
 			out_degree = [out_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
 
-		src_num_tweets = dok_array((n, n), dtype=np.int32)
-		dst_num_tweets = dok_array((n, n), dtype=np.int32)
-		src_num_followers = dok_array((n, n), dtype=np.int32)
-		dst_num_followers = dok_array((n, n), dtype=np.int32)
-		src_num_following = dok_array((n, n), dtype=np.int32)
-		dst_num_following = dok_array((n, n), dtype=np.int32)
+		# src_num_tweets = dok_array((n, n), dtype=np.int32)
+		dst_tweets = dok_array((n, n), dtype=np.int32)
+		src_followers = dok_array((n, n), dtype=np.int32)
+		dst_followers = dok_array((n, n), dtype=np.int32)
+		# src_num_following = dok_array((n, n), dtype=np.int32)
+		# dst_num_following = dok_array((n, n), dtype=np.int32)
 		src_dst_same = dok_array((n, n), dtype=np.int32)
 		timestamp_diff = dok_array((n, n), dtype=np.int32)
 
@@ -344,12 +347,12 @@ class GraphData:
 				print(f'Node {i}')
 			# for j in cols[np.where(rows == i)]:
 			for j in range(i):
-				src_num_tweets[i, j] = self.base_graph.nodes[i]['num_tweets']
-				dst_num_tweets[i, j] = self.base_graph.nodes[j]['num_tweets']
-				src_num_followers[i, j] = self.base_graph.nodes[i]['num_followers']
-				dst_num_followers[i, j] = self.base_graph.nodes[j]['num_followers']
-				src_num_following[i, j] = self.base_graph.nodes[i]['num_following']
-				dst_num_following[i, j] = self.base_graph.nodes[j]['num_following']
+				# src_num_tweets[i, j] = self.base_graph.nodes[i]['num_tweets']
+				dst_tweets[i, j] = self.base_graph.nodes[j]['num_tweets']
+				src_followers[i, j] = self.base_graph.nodes[i]['num_followers']
+				dst_followers[i, j] = self.base_graph.nodes[j]['num_followers']
+				# src_num_following[i, j] = self.base_graph.nodes[i]['num_following']
+				# dst_num_following[i, j] = self.base_graph.nodes[j]['num_following']
 
 				src_uid = self.base_graph.nodes[i]['user_id']
 				dst_uid = self.base_graph.nodes[j]['user_id']
@@ -370,40 +373,37 @@ class GraphData:
 					dst_nid = -1 if dst_uid not in uid_to_nid.keys() else uid_to_nid[dst_uid]
 
 					if src_nid == -1 or dst_nid == -1:
-						edge, edge_rev, sp_dir, cn = False, False, -1, 0
+						sp, cn = -1, 0
 					elif src_uid == dst_uid:
-						edge, edge_rev, sp_dir, cn = False, False, 0, 0
+						sp, cn = 0, 0
 					else:
-						edge = user_graph.IsEdge(src_nid, dst_nid)
-						edge_rev = user_graph.IsEdge(dst_nid, src_nid)
-						sp_dir = user_graph.GetShortPath(src_nid, dst_nid, True)
+						sp = user_graph.GetShortPath(src_nid, dst_nid, True)
 						cn = user_graph.GetCmnNbrs(src_nid, dst_nid, False)
 
-					src_follows_dst[i, j] = edge
-					dst_follows_src[i, j] = edge_rev
-					shortest_path_dir[i, j] = 0 if sp_dir <= 0 else 1 / sp_dir
-					# common_neighbors[i, j] = cn
+					# src_follows_dst[i, j] = edge
+					# dst_follows_src[i, j] = edge_rev
+					shortest_path[i, j] = 0 if sp <= 0 else 1 / sp
 					size_union = in_degree[i] + in_degree[j] + out_degree[i] + out_degree[j] - cn
-					jaccard_coeff[i, j] = 0 if size_union == 0 else cn / size_union
+					jaccard[i, j] = 0 if size_union == 0 else cn / size_union
 
-		self.features['src_num_tweets'] = src_num_tweets
-		self.features['dst_num_tweets'] = dst_num_tweets
-		self.features['src_num_followers'] = src_num_followers
-		self.features['dst_num_followers'] = dst_num_followers
-		self.features['src_num_following'] = src_num_following
-		self.features['dst_num_following'] = dst_num_following
+		# self.features['src_num_tweets'] = src_num_tweets        # remove
+		self.features['dst_tweets'] = dst_tweets
+		self.features['src_followers'] = src_followers
+		self.features['dst_followers'] = dst_followers
+		# self.features['src_num_following'] = src_num_following  # remove
+		# self.features['dst_num_following'] = dst_num_following  # remove
 		self.features['src_dst_same'] = src_dst_same
 		self.features['timestamp_diff'] = timestamp_diff
-		self.features['src_follows_dst'] = src_follows_dst
-		self.features['dst_follows_src'] = dst_follows_src
-		self.features['shortest_path_dir'] = shortest_path_dir
-		self.features['jaccard_coeff'] = jaccard_coeff
+		# self.features['src_follows_dst'] = src_follows_dst      # remove
+		# self.features['dst_follows_src'] = dst_follows_src      # remove
+		self.features['shortest_path'] = shortest_path
+		self.features['jaccard'] = jaccard
 
 		if not load_from_memory:
-			save_feature(src_follows_dst, 'src_follows_dst', self.rumor_number)
-			save_feature(dst_follows_src, 'dst_follows_src', self.rumor_number)
-			save_feature(shortest_path_dir, 'shortest_path_dir', self.rumor_number)
-			save_feature(jaccard_coeff, 'jaccard_coeff', self.rumor_number)
+			# save_feature(src_follows_dst, 'src_follows_dst', self.rumor_number)
+			# save_feature(dst_follows_src, 'dst_follows_src', self.rumor_number)
+			save_feature(shortest_path, 'shortest_path', self.rumor_number)
+			save_feature(jaccard, 'jaccard', self.rumor_number)
 
 		print('Fetching complete')
 
@@ -411,25 +411,25 @@ class GraphData:
 	def compute_dynamic_features(self, tweet_graph: nx.DiGraph, mod_graph: nx.DiGraph) -> dict[str: csr_array]:
 		n = len(tweet_graph)
 		dst_in_degree = dok_array((n, n), dtype=np.int32)
-		dst_in_degree_false = dok_array((n, n), dtype=np.int32)
-		dst_in_degree_true = dok_array((n, n), dtype=np.int32)
-		dst_out_degree = dok_array((n, n), dtype=np.int32)
+		# dst_in_degree_false = dok_array((n, n), dtype=np.int32)
+		# dst_in_degree_true = dok_array((n, n), dtype=np.int32)
+		# dst_out_degree = dok_array((n, n), dtype=np.int32)
 
 		rows, cols = nx.to_scipy_sparse_array(mod_graph, format='dok').nonzero()
 		for i in np.unique(rows):
 			for j in cols[np.where(rows == i)]:
-				true_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'a' or n == j])
-				false_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'r' or n == j])
+				# true_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'a' or n == j])
+				# false_graph = tweet_graph.subgraph([n for n, d in tweet_graph.nodes.items() if d['label'] == 'r' or n == j])
 				dst_in_degree[i, j] = tweet_graph.in_degree(j) / (len(tweet_graph))
-				dst_in_degree_true[i, j] = true_graph.in_degree(j) / (len(true_graph))
-				dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph))
-				dst_out_degree[i, j] = tweet_graph.out_degree(j)
+				# dst_in_degree_true[i, j] = true_graph.in_degree(j) / (len(true_graph))
+				# dst_in_degree_false[i, j] = false_graph.in_degree(j) / (len(false_graph))
+				# dst_out_degree[i, j] = tweet_graph.out_degree(j)
 
 		res = {k: csr_array(v[:n, :n]) for k, v in self.features.items()}
 		res['dst_in_degree'] = csr_array(dst_in_degree)
-		res['dst_in_degree_true'] = csr_array(dst_in_degree_true)
-		res['dst_in_degree_false'] = csr_array(dst_in_degree_false)
-		res['dst_out_degree'] = csr_array(dst_out_degree)
+		# res['dst_in_degree_true'] = csr_array(dst_in_degree_true)
+		# res['dst_in_degree_false'] = csr_array(dst_in_degree_false)
+		# res['dst_out_degree'] = csr_array(dst_out_degree)
 
 		src = self.src_label[:n, :n]
 		dst = self.dst_label[:n, :n]
@@ -448,8 +448,8 @@ class GraphData:
 
 		# Add links to all nodes from the source and make the graph undirected
 		mod_graph = nx.DiGraph(nx.DiGraph(res_graph).to_undirected())
-		for n in mod_graph.nodes:
-			mod_graph.add_edge(n, n)
+		# for n in mod_graph.nodes:
+		# 	mod_graph.add_edge(n, n)
 		last_node = len(mod_graph) - 1
 		for n in range(last_node):
 			mod_graph.add_edge(last_node, n)

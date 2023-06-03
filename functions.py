@@ -19,7 +19,8 @@ class StrengthFunction:
 			res.data = np.maximum(0, res.data) ** 2
 
 		elif self.type == 3:
-			res.data = np.reciprocal(1 + np.exp(-res.data))
+			with np.errstate(over='ignore'):
+				res.data = np.reciprocal(1 + np.exp(-res.data))
 
 		return res
 
@@ -33,8 +34,9 @@ class StrengthFunction:
 			res.data = np.maximum(0, 2 * res.data)
 
 		elif self.type == 3:
-			exp = np.nan_to_num(np.exp(-res.data))
-			res.data = exp / ((1 + exp) ** 2)
+			with np.errstate(over='ignore'):
+				exp = np.nan_to_num(np.exp(-res.data))
+				res.data = exp / ((1 + exp) ** 2)
 
 		return psi * res
 
@@ -48,8 +50,8 @@ class CostFunction:
 		self.type = fun_type
 
 	def compute_cost(self, x):
-		# TODO: deactivate overflow warnings where expected
-		step = np.reciprocal(1 + np.exp(-x / self.b))
+		with np.errstate(over='ignore'):
+			step = np.reciprocal(1 + np.exp(-x / self.b))
 		sq_hinge = np.maximum(0, x) ** 2
 
 		if self.type == 1:
@@ -72,7 +74,8 @@ class CostFunction:
 			return step + sq_hinge
 
 	def compute_cost_and_gradient(self, x):
-		cost_step = np.reciprocal(1 + np.exp(-x / self.b))
+		with np.errstate(over='ignore'):
+			cost_step = np.reciprocal(1 + np.exp(-x / self.b))
 		grad_step = cost_step * (1 - cost_step) / self.b
 
 		cost_hinge = np.maximum(0, x) ** 2
