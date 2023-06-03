@@ -324,7 +324,7 @@ class GraphData:
 			user_graph, uid_to_nid = fetch_user_graph(self.rumor_number, self.user_ids)
 			# src_follows_dst = dok_array((n, n), dtype=np.int32)
 			# dst_follows_src = dok_array((n, n), dtype=np.int32)
-			shortest_path = dok_array((n, n), dtype=np.int32)
+			shortest_path = dok_array((n, n), dtype=np.float64)
 			jaccard = dok_array((n, n), dtype=np.float64)
 			in_degree_vec = {d.GetVal1(): d.GetVal2() for d in user_graph.GetNodeInDegV()}
 			in_degree = [in_degree_vec[uid_to_nid[uid[i]]] if uid[i] in uid_to_nid.keys() else 0 for i in range(n)]
@@ -338,7 +338,7 @@ class GraphData:
 		# src_num_following = dok_array((n, n), dtype=np.int32)
 		# dst_num_following = dok_array((n, n), dtype=np.int32)
 		src_dst_same = dok_array((n, n), dtype=np.int32)
-		timestamp_diff = dok_array((n, n), dtype=np.int32)
+		timestamp_diff = dok_array((n, n), dtype=np.float64)
 
 		# rows, cols = self.adj_matrix.nonzero()
 		# for i in np.unique(rows):

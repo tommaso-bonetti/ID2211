@@ -28,4 +28,9 @@ def main():
 	print(f'The final value of the cost function is: {final_f}')
 
 if __name__ == '__main__':
-	main()
+	load_user_graph(1)
+	load_user_graph(2)
+	load_user_graph(3)
+	load_user_graph(4)
+	load_user_graph(5)
+	# main()
