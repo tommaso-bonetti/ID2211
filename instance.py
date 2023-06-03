@@ -4,6 +4,7 @@ import random
 import numpy as np
 from numpy import ndarray
 from scipy.sparse import csr_array
+from sklearn.metrics import roc_auc_score, roc_curve
 
 from functions import StrengthFunction, CostFunction
 from graph import GraphData, GraphWrapper
@@ -180,7 +181,8 @@ class Instance:
 		diff_f = self.graph.get_adj_matrix() * strength_fun.compute_gradient(w_k, self.graph.get_feature(feat))
 		row_sums_df = diff_f.sum(axis=1)
 		row_sums_2d = np.atleast_2d(row_sums).T
-		row_sums_sq_2d = np.nan_to_num(np.atleast_2d(np.reciprocal(row_sums_sq)).T, posinf=0)
+		with np.errstate(divide='ignore'):
+			row_sums_sq_2d = np.nan_to_num(np.atleast_2d(np.reciprocal(row_sums_sq)).T, posinf=0)
 		row_sums_df_2d = np.atleast_2d(row_sums_df).T
 
 		res = (1 - alpha) * ((diff_f * row_sums_2d - adj_mat * row_sums_df_2d) * row_sums_sq_2d)
@@ -328,12 +330,12 @@ class TestInstances:
 
 		print('Snapshots loaded')
 
-	def predict(self, strength_fun: StrengthFunction, w: ndarray, alpha: float, k: int):
+	def predict_top_k(self, strength_fun: StrengthFunction, w: ndarray, alpha: float, k: int):
 		links = {}
 		predictions = {}
 		top_k_correct = {}
 
-		for instance in self.test_instances:
+		for instance in self.instances:
 			src = instance.source_node_index
 			scores = instance.compute_page_rank(strength_fun, w, alpha)
 			scores_idx = np.argsort(scores)[::-1]
@@ -348,3 +350,20 @@ class TestInstances:
 			accuracy.append(sum(vals) / len(vals))
 
 		return links, predictions, top_k_correct, accuracy
+
+	def predict_auc_roc(self, strength_fun: StrengthFunction, w: ndarray, alpha: float) -> \
+				tuple[float, ndarray, ndarray, ndarray]:
+		y_true = np.array([])
+		y_score = np.array([])
+
+		for instance in self.instances:
+			labels = np.zeros(instance.graph.get_size())
+			labels[instance.positive_link] = 1
+			scores = instance.compute_page_rank(strength_fun, w, alpha)
+
+			y_true = np.append(y_true, labels)
+			y_score = np.append(y_score, scores)
+
+		auc = roc_auc_score(y_true, y_score)
+		fpr, tpr, th = roc_curve(y_true, y_score)
+		return auc, fpr, tpr, th

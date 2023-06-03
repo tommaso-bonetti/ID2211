@@ -32,7 +32,7 @@ class ParameterLearner:
 
 		print('Starting optimization...')
 
-		bounds = [(-3, 3) for _ in range(nf)]
+		bounds = [(-5, 5) for _ in range(nf)]
 		res = dual_annealing(objective_function, x0=w0, bounds=bounds, maxiter=100, minimizer_kwargs={'jac': grad})
 		return w0, res.x, res.fun
 

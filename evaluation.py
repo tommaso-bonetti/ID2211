@@ -1,16 +1,19 @@
+import matplotlib.pyplot as plt
 import numpy as np
-from instance import Instances
+from instance import TestInstances
 from functions import StrengthFunction
 
 strength = StrengthFunction(fun_type=3)
-w = np.array([
-	0.09317276, -0.25391533, 1.89842937, 2.59772972, 1.06444034, 2.64647977, -2.89376632, 0.00516021, 0.03429735,
-	-0.01369599, 0.02015039, 0.13989816, -0.0264989, 0.15804016, -0.12739018, -2.96182103
-])
-alpha = .2
+w = np.array([-0.07572922, -1.42684673, 3.78953302, 0.01810841, -0.10976192, 0.15850626, -0.05775282, -0.10935978])
+alpha = .3
 
-test_instances = Instances(train_rumors=[], test_rumors=[3], train_split=.8)
-true, pred, _, accuracy = test_instances.predict(strength, w, alpha, k=10)
+test_instances = TestInstances(test_rumors=[1, 2, 3, 4, 5], split=(.6, .2, .2), is_valid=False)
+true, pred, _, accuracy = test_instances.predict_top_k(strength, w, alpha, k=10)
 print(f'True links: {true}')
 print(f'Predicted links: {pred}')
 print(f'Accuracy: {accuracy}')
+
+auc, fpr, tpr, th = test_instances.predict_auc_roc(strength, w, alpha)
+print(f'AUC: {auc}')
+plt.plot(fpr, tpr)
+plt.show()
