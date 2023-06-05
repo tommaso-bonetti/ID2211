@@ -103,6 +103,7 @@ def print_hubs(network: nx.DiGraph, threshold: int = 10):
 				reverse=True)
 	attractors = list(filter(lambda node: node[1] >= threshold, attractors))
 	print(attractors)
+	return attractors[0][0]
 
 def plot_growth(network: nx.DiGraph, attractor, min_timestamp, max_timestamp):
 	step = (max_timestamp - min_timestamp) / 30
@@ -126,7 +127,9 @@ def plot_growth(network: nx.DiGraph, attractor, min_timestamp, max_timestamp):
 	time_frames_bins = np.append(time_frames, max_timestamp)
 	overall = plt.plot(time_frames_bins - min_timestamp, overall_degree, color='orange')
 	delta = plt.twinx().plot(time_frames - min_timestamp + step/2, delta_degree, '^-')
-	plt.xlabel('Seconds since attractor tweet was posted')
+	ticks = (time_frames_bins - min_timestamp)[::5]
+	plt.xticks(ticks, [f'{round(t / 3600, 1)}' for t in ticks])
+	plt.xlabel('Hours since attractor tweet was posted')
 	plt.legend(overall + delta, ['Overall in-degree', 'In-degree variation'], loc=7)
 	plt.title('Variation of the main attractor\'s in-degree over time')
 	plt.show()
@@ -204,15 +207,13 @@ def draw_user_network(network: nx.DiGraph):
 	plt.show()
 
 def main():
-	rumor_number = 1
+	rumor_number = 5
 
 	path_input = f'./in/FN{rumor_number}_DD.xlsx'
 	tweet_data = openpyxl.load_workbook(path_input)['Sheet1']
 
 	path_jsonl = f'./in/FN{rumor_number}_Labels.jsonl'
 	path_graph = f'./in/FN{rumor_number}_DG.graph'
-
-	path_output = f'./out/FN{rumor_number}/'
 
 	user_id = [str(int(cell.value)) for cell in tweet_data['A'][1:]]
 	num_tweets = [int(cell.value) for cell in tweet_data['B'][1:]]
@@ -316,8 +317,8 @@ def main():
 	# draw_network(tweet_net_nx, label, nodes=None, spring_fac=6)
 	# plot_components(tweet_net)
 	# plot_degrees(tweet_net)
-	print_hubs(tweet_net_nx)
-	plot_growth(tweet_net_nx, 478, timestamp[478], timestamp[0])
+	main_hub = print_hubs(tweet_net_nx)
+	plot_growth(tweet_net_nx, main_hub, timestamp[main_hub], timestamp[0])
 	return
 
 	user_net = snap.ConvertGraph(snap.PNEANet, snap.TNGraph.Load(snap.TFIn(path_graph)))
