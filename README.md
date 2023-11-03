@@ -6,8 +6,6 @@ Link prediction algorithms are used to attempt to determine where new edges will
 
 We analyze five separate fake news stories which were spread on Twitter, using information about the tweets and the users that posted them to forecast which users will interact in a notoriously divisive environment. Our results show that the method yields a good prediction performance, being capable of correctly identifying the vast majority of interactions within very few guesses.
 
-The complete project report is available [here](https://github.com/tommaso-bonetti/ID2211/blob/a002d0c3ba639e4631be76632c13ce49bcda78f8/Final%20project%20report.pdf).
-
 ## Development team
 
 * **Tommaso Bonetti** ([tbonetti@kth.se](mailto:tbonetti@kth.se))
