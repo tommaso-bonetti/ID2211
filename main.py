@@ -14,7 +14,7 @@ def load_user_graph(rumor_number):
 def main():
 	strength = StrengthFunction(fun_type=3)
 	cost = CostFunction(fun_type=1)
-	alpha = # TODO set alpha value Tommaso 0.1 - August 0.2 - Hongjun 0.3 - Donglin 0.4
+	alpha = 0.1
 
 	# Both train_rumors and test_rumors need to be lists where the rumor number(s) are specified. The train_split is
 	# applied to all graphs. If you want to train and test on the same rumor, that is possible. This constructor

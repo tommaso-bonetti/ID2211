@@ -324,19 +324,21 @@ class TestInstances:
 
 			print(f'Loading {"validation" if is_valid else "test"} set from graph {r}...')
 			for i, source in enumerate(idx):
-				print(f'\tLoading snapshot {i + 1}/{test_size}...')
+				# print(f'\tLoading snapshot {i + 1}/{test_size}...')
 				snapshot = graph.get_snapshot(end_node=source, end_train=train_size)
 				self.instances.append(Instance(source, snapshot))
 
 		print('Snapshots loaded')
 
 	def predict_top_k(self, strength_fun: StrengthFunction, w: ndarray, alpha: float, k: int):
+		sources = []
 		links = {}
 		predictions = {}
 		top_k_correct = {}
 
 		for instance in self.instances:
 			src = instance.source_node_index
+			sources.append(src)
 			scores = instance.compute_page_rank(strength_fun, w, alpha)
 			scores_idx = np.argsort(scores)[::-1]
 
@@ -349,7 +351,7 @@ class TestInstances:
 			vals = [l[size] for l in top_k_correct.values()]
 			accuracy.append(sum(vals) / len(vals))
 
-		return links, predictions, top_k_correct, accuracy
+		return sources, links, predictions, top_k_correct, accuracy
 
 	def predict_auc_roc(self, strength_fun: StrengthFunction, w: ndarray, alpha: float) -> \
 				tuple[float, ndarray, ndarray, ndarray]:
